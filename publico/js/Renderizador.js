@@ -421,47 +421,31 @@ class Renderizador {
     const cx = posicao.x * tam + tam / 2;
     const cy = posicao.y * tam + tam / 2;
 
-    // Animacao de pulso
-    const pulso = 1 + Math.sin(this.tickAnimacao * 0.08 + posicao.x + posicao.y) * 0.15;
-    const raio = (tam / 2 - 3) * pulso;
-
-    // Brilho externo
-    ctx.shadowColor = cor;
-    ctx.shadowBlur = 12;
-
-    // Corpo da comida
-    ctx.fillStyle = cor;
-    ctx.beginPath();
-    ctx.arc(cx, cy, raio, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Brilho interno
-    const gradiente = ctx.createRadialGradient(cx - 2, cy - 2, 0, cx, cy, raio);
-    gradiente.addColorStop(0, 'rgba(255,255,255,0.4)');
-    gradiente.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = gradiente;
-    ctx.fill();
-
-    ctx.shadowBlur = 0;
-
-    // Icone/simbolo dentro da comida conforme o tipo
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.font = `bold ${Math.floor(tam * 0.45)}px "Inter", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const simbolos = {
-      normal: '',
+    // Emojis por tipo de comida
+    const emojis = {
+      normal: '🍎',
       velocidade: '⚡',
-      dourada: '★',
-      vida: '♥',
-      escudo: '◆',
+      dourada: '⭐',
+      vida: '❤️',
+      escudo: '🛡️',
     };
 
-    const simbolo = simbolos[tipo] || '';
-    if (simbolo) {
-      ctx.fillText(simbolo, cx, cy + 1);
-    }
+    const emoji = emojis[tipo] || '🍎';
+
+    // Animacao de pulso
+    const pulso = 1 + Math.sin(this.tickAnimacao * 0.08 + posicao.x + posicao.y) * 0.15;
+    const tamanhoFonte = Math.floor(tam * 0.75 * pulso);
+
+    // Brilho externo sutil
+    ctx.shadowColor = cor;
+    ctx.shadowBlur = 10;
+
+    ctx.font = `${tamanhoFonte}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(emoji, cx, cy);
+
+    ctx.shadowBlur = 0;
   }
 
   /* =========================================================================

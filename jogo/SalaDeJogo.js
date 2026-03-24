@@ -578,12 +578,33 @@ class SalaDeJogo {
 
   /**
    * Resolve colisao direta entre duas cabecas de cobra.
-   * A cobra menor morre; em caso de empate, ambas perdem segmentos.
+   * Se um jogador tem escudo, o outro morre (escudo reflete). Ambos com escudo: sem efeito.
+   * Sem escudo: a cobra menor morre; em caso de empate, ambas perdem segmentos.
    * @param {object} jogadorA - Primeiro jogador.
    * @param {object} jogadorB - Segundo jogador.
    * @private
    */
   _resolverColisaoCabecaCabeca(jogadorA, jogadorB) {
+    const escudoA = jogadorA.efeitos.escudo.ativo;
+    const escudoB = jogadorB.efeitos.escudo.ativo;
+
+    // Se ambos tem escudo, nenhum efeito
+    if (escudoA && escudoB) return;
+
+    // Se apenas um tem escudo, o outro morre (escudo reflete)
+    if (escudoA) {
+      jogadorA.pontuacao += CONSTANTES.PONTUACAO.ELIMINAR_JOGADOR;
+      jogadorA.eliminacoes++;
+      this._processarMorte(jogadorB, 'escudo_refletido');
+      return;
+    }
+    if (escudoB) {
+      jogadorB.pontuacao += CONSTANTES.PONTUACAO.ELIMINAR_JOGADOR;
+      jogadorB.eliminacoes++;
+      this._processarMorte(jogadorA, 'escudo_refletido');
+      return;
+    }
+
     const tamanhoA = jogadorA.cobra.length;
     const tamanhoB = jogadorB.cobra.length;
 

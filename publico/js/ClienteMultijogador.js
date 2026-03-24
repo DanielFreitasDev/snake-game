@@ -182,7 +182,7 @@ class ClienteMultijogador {
 
     this.elTelaLobby.style.display = nome === 'lobby' ? 'block' : 'none';
     this.elTelaSala.style.display = nome === 'sala' ? 'block' : 'none';
-    this.elTelaJogo.style.display = nome === 'jogo' ? 'flex' : 'none';
+    this.elTelaJogo.style.display = nome === 'jogo' ? 'block' : 'none';
     this.elTelaResultado.style.display = nome === 'resultado' ? 'block' : 'none';
 
     // Controles mobile no jogo

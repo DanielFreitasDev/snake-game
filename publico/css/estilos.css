@@ -589,10 +589,6 @@ button {
 
 .container-jogo-multi {
   padding-top: 80px;
-  /* Compensar os paineis laterais (feed esquerda + placar direita)
-     para manter o canvas visualmente centralizado na tela */
-  padding-left: 220px;
-  padding-right: 220px;
 }
 
 .canvas-jogo {
@@ -1256,11 +1252,6 @@ button {
     padding-top: 60px;
   }
 
-  .container-jogo-multi {
-    /* Sem feed na esquerda, so o placar na direita */
-    padding-left: 8px;
-    padding-right: 160px;
-  }
 }
 
 @media (max-width: 480px) {
@@ -1289,8 +1280,4 @@ button {
     font-size: 0.7rem;
   }
 
-  .container-jogo-multi {
-    padding-left: 4px;
-    padding-right: 130px;
-  }
 }

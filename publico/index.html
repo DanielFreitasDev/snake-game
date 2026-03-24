@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snake Game - Menu Principal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/estilos.css">
+</head>
+<body>
+  <!-- ===================================================================
+       TELA DO MENU PRINCIPAL
+       Pagina inicial com titulo animado, botoes de modo de jogo e
+       tabela de recordes do modo solo (armazenados em localStorage).
+       =================================================================== -->
+
+  <!-- Canvas de fundo animado (particulas decorativas) -->
+  <canvas id="canvas-fundo" class="canvas-fundo"></canvas>
+
+  <div class="container-menu">
+    <!-- Titulo do jogo com animacao de brilho -->
+    <div class="titulo-jogo">
+      <h1 class="titulo-principal">
+        <span class="emoji-titulo">🐍</span>
+        SNAKE
+        <span class="titulo-destaque">GAME</span>
+      </h1>
+      <p class="subtitulo">O classico reinventado</p>
+    </div>
+
+    <!-- Botoes de modo de jogo -->
+    <div class="menu-botoes">
+      <a href="/solo.html" class="botao-menu botao-solo">
+        <div class="botao-icone">🎮</div>
+        <div class="botao-texto">
+          <span class="botao-titulo">Modo Solo</span>
+          <span class="botao-descricao">Jogue sozinho e bata seus recordes!</span>
+        </div>
+        <div class="botao-seta">→</div>
+      </a>
+
+      <a href="/multijogador.html" class="botao-menu botao-multi">
+        <div class="botao-icone">👥</div>
+        <div class="botao-texto">
+          <span class="botao-titulo">Multijogador</span>
+          <span class="botao-descricao">Desafie amigos na rede local!</span>
+        </div>
+        <div class="botao-seta">→</div>
+      </a>
+    </div>
+
+    <!-- Tabela de recordes do modo solo -->
+    <div class="painel-recordes">
+      <h2 class="recordes-titulo">🏆 Recordes</h2>
+      <div id="lista-recordes" class="lista-recordes">
+        <p class="sem-recordes">Nenhum recorde ainda. Jogue para aparecer aqui!</p>
+      </div>
+    </div>
+
+    <!-- Legenda dos tipos de comida -->
+    <div class="painel-legenda">
+      <h2 class="legenda-titulo">Tipos de Comida</h2>
+      <div class="legenda-grid">
+        <div class="legenda-item">
+          <span class="legenda-cor" style="background: #44ff44;"></span>
+          <span>Maca (+10 pts, +1 seg.)</span>
+        </div>
+        <div class="legenda-item">
+          <span class="legenda-cor" style="background: #ffee00;"></span>
+          <span>Raio (velocidade 5s)</span>
+        </div>
+        <div class="legenda-item">
+          <span class="legenda-cor" style="background: #ffd700;"></span>
+          <span>Estrela (+30 pts, +3 seg.)</span>
+        </div>
+        <div class="legenda-item">
+          <span class="legenda-cor" style="background: #ff4488;"></span>
+          <span>Coracao (+1 vida)</span>
+        </div>
+        <div class="legenda-item">
+          <span class="legenda-cor" style="background: #00ffff;"></span>
+          <span>Escudo (protecao 4s)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rodape -->
+    <div class="rodape-menu">
+      <p>Use as <strong>setas do teclado</strong> ou <strong>WASD</strong> para mover a cobra</p>
+    </div>
+  </div>
+
+  <!-- ===================================================================
+       SCRIPT: Menu principal
+       Carrega e exibe recordes do localStorage e anima o fundo.
+       =================================================================== -->
+  <script>
+    /**
+     * Carrega e exibe os recordes do modo solo armazenados em localStorage.
+     * Os recordes sao exibidos em ordem decrescente de pontuacao.
+     */
+    function carregarRecordes() {
+      const listaEl = document.getElementById('lista-recordes');
+      const recordes = JSON.parse(localStorage.getItem('snake_recordes') || '[]');
+
+      if (recordes.length === 0) {
+        listaEl.innerHTML = '<p class="sem-recordes">Nenhum recorde ainda. Jogue para aparecer aqui!</p>';
+        return;
+      }
+
+      // Ordenar por pontuacao (maior primeiro) e limitar a 10
+      recordes.sort((a, b) => b.pontuacao - a.pontuacao);
+      const top10 = recordes.slice(0, 10);
+
+      let html = '<div class="tabela-recordes">';
+      top10.forEach((r, i) => {
+        const medalha = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+        const data = r.data ? new Date(r.data).toLocaleDateString('pt-BR') : '-';
+        html += `
+          <div class="recorde-linha ${i < 3 ? 'recorde-top' : ''}">
+            <span class="recorde-posicao">${medalha}</span>
+            <span class="recorde-pontuacao">${r.pontuacao.toLocaleString('pt-BR')} pts</span>
+            <span class="recorde-data">${data}</span>
+          </div>
+        `;
+      });
+      html += '</div>';
+      listaEl.innerHTML = html;
+    }
+
+    /**
+     * Anima particulas decorativas no canvas de fundo.
+     * Cria um efeito visual sutil com particulas flutuantes.
+     */
+    function iniciarFundoAnimado() {
+      const canvas = document.getElementById('canvas-fundo');
+      const ctx = canvas.getContext('2d');
+      let particulas = [];
+
+      /** Ajusta o canvas ao tamanho da janela */
+      function redimensionar() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+
+      /** Cria uma particula com propriedades aleatorias */
+      function criarParticula() {
+        return {
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          tamanho: Math.random() * 3 + 1,
+          velocidadeX: (Math.random() - 0.5) * 0.5,
+          velocidadeY: (Math.random() - 0.5) * 0.5,
+          opacidade: Math.random() * 0.5 + 0.1,
+          cor: ['#00ff88', '#ff4488', '#4499ff', '#ffaa00', '#bb55ff'][
+            Math.floor(Math.random() * 5)
+          ],
+        };
+      }
+
+      /** Loop de animacao: atualiza e desenha particulas */
+      function animar() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        for (const p of particulas) {
+          p.x += p.velocidadeX;
+          p.y += p.velocidadeY;
+
+          // Reaparecer do outro lado ao sair da tela
+          if (p.x < 0) p.x = canvas.width;
+          if (p.x > canvas.width) p.x = 0;
+          if (p.y < 0) p.y = canvas.height;
+          if (p.y > canvas.height) p.y = 0;
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.tamanho, 0, Math.PI * 2);
+          ctx.fillStyle = p.cor;
+          ctx.globalAlpha = p.opacidade;
+          ctx.fill();
+        }
+
+        ctx.globalAlpha = 1;
+        requestAnimationFrame(animar);
+      }
+
+      redimensionar();
+      window.addEventListener('resize', redimensionar);
+
+      // Criar particulas iniciais
+      for (let i = 0; i < 60; i++) {
+        particulas.push(criarParticula());
+      }
+
+      animar();
+    }
+
+    // Inicializar ao carregar a pagina
+    document.addEventListener('DOMContentLoaded', () => {
+      carregarRecordes();
+      iniciarFundoAnimado();
+    });
+  </script>
+</body>
+</html>

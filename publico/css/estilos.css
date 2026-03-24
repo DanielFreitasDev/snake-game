@@ -1,0 +1,1281 @@
+/**
+ * @fileoverview Estilos globais do jogo Snake.
+ *
+ * Utiliza um tema escuro moderno com efeitos de glassmorphism,
+ * gradientes neon e animacoes CSS suaves. Organizado por:
+ * 1. Reset e variaveis globais
+ * 2. Componentes base (tipografia, botoes, inputs)
+ * 3. Menu principal
+ * 4. Modo solo (HUD, overlays)
+ * 5. Multiplayer (lobby, sala, jogo, resultado)
+ * 6. Componentes compartilhados (canvas, efeitos, mobile)
+ * 7. Animacoes e keyframes
+ * 8. Responsividade
+ */
+
+/* =========================================================================
+   1. RESET E VARIAVEIS GLOBAIS
+   ======================================================================= */
+
+:root {
+  /* Cores do tema */
+  --cor-fundo: #0a0b1e;
+  --cor-fundo-claro: #12143a;
+  --cor-superficie: rgba(255, 255, 255, 0.05);
+  --cor-superficie-hover: rgba(255, 255, 255, 0.1);
+  --cor-borda: rgba(255, 255, 255, 0.1);
+  --cor-texto: #e8e8f0;
+  --cor-texto-secundario: #8888aa;
+  --cor-texto-destaque: #ffffff;
+
+  /* Cores de acentuacao */
+  --cor-primaria: #00ff88;
+  --cor-primaria-escura: #00cc66;
+  --cor-secundaria: #ff4488;
+  --cor-terciaria: #4499ff;
+  --cor-alerta: #ffaa00;
+
+  /* Gradientes */
+  --gradiente-primario: linear-gradient(135deg, #00ff88, #00ccff);
+  --gradiente-secundario: linear-gradient(135deg, #ff4488, #ff8844);
+  --gradiente-fundo: radial-gradient(ellipse at 50% 0%, #1a1b4e 0%, #0a0b1e 70%);
+
+  /* Glassmorphism */
+  --vidro-fundo: rgba(15, 15, 40, 0.8);
+  --vidro-borda: rgba(255, 255, 255, 0.08);
+  --vidro-blur: blur(20px);
+
+  /* Sombras */
+  --sombra-neon-verde: 0 0 20px rgba(0, 255, 136, 0.3);
+  --sombra-neon-rosa: 0 0 20px rgba(255, 68, 136, 0.3);
+  --sombra-neon-azul: 0 0 20px rgba(68, 153, 255, 0.3);
+
+  /* Tipografia */
+  --fonte-titulo: 'Orbitron', sans-serif;
+  --fonte-corpo: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Espacamento */
+  --raio-borda: 16px;
+  --raio-borda-sm: 8px;
+  --raio-borda-lg: 24px;
+}
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--fonte-corpo);
+  background: var(--cor-fundo);
+  background-image: var(--gradiente-fundo);
+  color: var(--cor-texto);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+button {
+  border: none;
+  cursor: pointer;
+  font-family: var(--fonte-corpo);
+}
+
+/* =========================================================================
+   2. COMPONENTES BASE
+   ======================================================================= */
+
+/* ----- Botoes ----- */
+
+.botao-acao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 32px;
+  border-radius: var(--raio-borda);
+  font-size: 1rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  text-align: center;
+  gap: 8px;
+}
+
+.botao-iniciar {
+  background: var(--gradiente-primario);
+  color: #0a0b1e;
+  font-weight: 700;
+}
+
+.botao-iniciar:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sombra-neon-verde);
+}
+
+.botao-iniciar:active {
+  transform: translateY(0);
+}
+
+.botao-secundario {
+  background: var(--cor-superficie);
+  color: var(--cor-texto);
+  border: 1px solid var(--cor-borda);
+}
+
+.botao-secundario:hover {
+  background: var(--cor-superficie-hover);
+  transform: translateY(-1px);
+}
+
+.botao-voltar {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  padding: 8px 16px;
+  background: var(--vidro-fundo);
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--raio-borda-sm);
+  color: var(--cor-texto-secundario);
+  font-size: 0.9rem;
+  z-index: 100;
+  backdrop-filter: var(--vidro-blur);
+  transition: all 0.2s;
+}
+
+.botao-voltar:hover {
+  color: var(--cor-texto);
+  background: var(--cor-superficie-hover);
+}
+
+.botao-link {
+  background: none;
+  color: var(--cor-terciaria);
+  font-size: 0.85rem;
+  padding: 8px;
+  transition: opacity 0.2s;
+}
+
+.botao-link:hover {
+  opacity: 0.8;
+}
+
+/* ----- Inputs ----- */
+
+.input-texto {
+  width: 100%;
+  padding: 14px 18px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio-borda-sm);
+  color: var(--cor-texto);
+  font-size: 1rem;
+  font-family: var(--fonte-corpo);
+  transition: border-color 0.3s;
+  outline: none;
+}
+
+.input-texto:focus {
+  border-color: var(--cor-primaria);
+  box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.1);
+}
+
+.input-texto::placeholder {
+  color: var(--cor-texto-secundario);
+}
+
+.input-codigo {
+  text-align: center;
+  font-family: var(--fonte-titulo);
+  font-size: 1.3rem;
+  letter-spacing: 4px;
+  width: 180px;
+}
+
+/* ----- Mensagens ----- */
+
+.mensagem-erro {
+  padding: 12px 16px;
+  background: rgba(255, 50, 50, 0.15);
+  border: 1px solid rgba(255, 50, 50, 0.3);
+  border-radius: var(--raio-borda-sm);
+  color: #ff6666;
+  font-size: 0.9rem;
+  margin-top: 12px;
+  text-align: center;
+}
+
+/* =========================================================================
+   3. MENU PRINCIPAL (index.html)
+   ======================================================================= */
+
+/* Canvas de fundo com particulas */
+.canvas-fundo {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.container-menu {
+  position: relative;
+  z-index: 1;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 40px 24px 60px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+
+/* Titulo do jogo */
+.titulo-jogo {
+  text-align: center;
+  padding-top: 20px;
+}
+
+.titulo-principal {
+  font-family: var(--fonte-titulo);
+  font-size: 3.5rem;
+  font-weight: 900;
+  color: var(--cor-texto-destaque);
+  text-shadow: 0 0 40px rgba(0, 255, 136, 0.4);
+  animation: brilharTitulo 3s ease-in-out infinite;
+  line-height: 1.1;
+}
+
+.emoji-titulo {
+  display: inline-block;
+  animation: balancoCobra 2s ease-in-out infinite;
+  margin-right: 4px;
+}
+
+.titulo-destaque {
+  display: block;
+  background: var(--gradiente-primario);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 4rem;
+}
+
+.subtitulo {
+  font-size: 1rem;
+  color: var(--cor-texto-secundario);
+  margin-top: 8px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* Botoes do menu */
+.menu-botoes {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.botao-menu {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  background: var(--vidro-fundo);
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--raio-borda);
+  backdrop-filter: var(--vidro-blur);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.botao-menu:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.botao-solo:hover {
+  box-shadow: var(--sombra-neon-verde);
+  border-color: rgba(0, 255, 136, 0.3);
+}
+
+.botao-multi:hover {
+  box-shadow: var(--sombra-neon-azul);
+  border-color: rgba(68, 153, 255, 0.3);
+}
+
+.botao-icone {
+  font-size: 2rem;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cor-superficie);
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.botao-texto {
+  flex: 1;
+}
+
+.botao-titulo {
+  display: block;
+  font-family: var(--fonte-titulo);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--cor-texto-destaque);
+  margin-bottom: 4px;
+}
+
+.botao-descricao {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--cor-texto-secundario);
+}
+
+.botao-seta {
+  font-size: 1.5rem;
+  color: var(--cor-texto-secundario);
+  transition: transform 0.3s;
+}
+
+.botao-menu:hover .botao-seta {
+  transform: translateX(4px);
+  color: var(--cor-texto);
+}
+
+/* Painel de recordes */
+.painel-recordes {
+  width: 100%;
+  background: var(--vidro-fundo);
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--raio-borda);
+  padding: 24px;
+  backdrop-filter: var(--vidro-blur);
+}
+
+.recordes-titulo {
+  font-family: var(--fonte-titulo);
+  font-size: 1.1rem;
+  color: var(--cor-alerta);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.sem-recordes {
+  text-align: center;
+  color: var(--cor-texto-secundario);
+  font-size: 0.9rem;
+  padding: 16px;
+}
+
+.tabela-recordes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recorde-linha {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--cor-superficie);
+  border-radius: var(--raio-borda-sm);
+  gap: 12px;
+}
+
+.recorde-top {
+  background: rgba(255, 215, 0, 0.08);
+  border: 1px solid rgba(255, 215, 0, 0.15);
+}
+
+.recorde-posicao {
+  width: 32px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.recorde-pontuacao {
+  flex: 1;
+  font-family: var(--fonte-titulo);
+  font-size: 0.95rem;
+  color: var(--cor-texto-destaque);
+}
+
+.recorde-data {
+  font-size: 0.8rem;
+  color: var(--cor-texto-secundario);
+}
+
+/* Painel de legenda */
+.painel-legenda {
+  width: 100%;
+  background: var(--vidro-fundo);
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--raio-borda);
+  padding: 24px;
+  backdrop-filter: var(--vidro-blur);
+}
+
+.legenda-titulo {
+  font-family: var(--fonte-titulo);
+  font-size: 0.95rem;
+  color: var(--cor-texto-destaque);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.legenda-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.legenda-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9rem;
+  color: var(--cor-texto-secundario);
+}
+
+.legenda-cor {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* Rodape */
+.rodape-menu {
+  text-align: center;
+  color: var(--cor-texto-secundario);
+  font-size: 0.85rem;
+}
+
+.rodape-menu strong {
+  color: var(--cor-texto);
+}
+
+/* =========================================================================
+   4. MODO SOLO (solo.html)
+   ======================================================================= */
+
+/* HUD superior */
+.hud-solo,
+.hud-multi {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--vidro-fundo);
+  border-bottom: 1px solid var(--vidro-borda);
+  backdrop-filter: var(--vidro-blur);
+  z-index: 50;
+  gap: 16px;
+}
+
+.hud-esquerda,
+.hud-direita {
+  flex: 1;
+}
+
+.hud-direita {
+  text-align: right;
+}
+
+.hud-centro {
+  display: flex;
+  gap: 32px;
+}
+
+.hud-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hud-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--cor-texto-secundario);
+}
+
+.hud-valor {
+  font-family: var(--fonte-titulo);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--cor-texto-destaque);
+}
+
+.hud-vidas {
+  font-size: 1.2rem;
+  letter-spacing: 2px;
+}
+
+.hud-tempo {
+  color: var(--cor-alerta);
+}
+
+/* Barra de efeitos ativos */
+.barra-efeitos {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 50;
+  min-height: 30px;
+}
+
+.efeito-ativo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  animation: pulsar 1.5s ease-in-out infinite;
+}
+
+.efeito-velocidade {
+  background: rgba(255, 238, 0, 0.2);
+  border: 1px solid rgba(255, 238, 0, 0.4);
+  color: #ffee00;
+}
+
+.efeito-escudo {
+  background: rgba(0, 255, 255, 0.2);
+  border: 1px solid rgba(0, 255, 255, 0.4);
+  color: #00ffff;
+}
+
+/* Container do canvas */
+.container-jogo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding-top: 80px;
+  position: relative;
+}
+
+.container-jogo-multi {
+  padding-top: 80px;
+}
+
+.canvas-jogo {
+  border-radius: var(--raio-borda);
+  box-shadow:
+    0 0 30px rgba(0, 255, 136, 0.1),
+    0 4px 30px rgba(0, 0, 0, 0.5),
+    inset 0 0 30px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Overlays do jogo (inicio, game over, pausa) */
+.overlay-jogo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  background: rgba(10, 11, 30, 0.85);
+  backdrop-filter: blur(8px);
+  border-radius: var(--raio-borda);
+}
+
+.overlay-conteudo {
+  text-align: center;
+  max-width: 400px;
+  padding: 40px;
+  animation: surgir 0.3s ease-out;
+}
+
+.overlay-conteudo h2 {
+  font-family: var(--fonte-titulo);
+  font-size: 2rem;
+  margin-bottom: 16px;
+  color: var(--cor-texto-destaque);
+}
+
+.overlay-conteudo p {
+  color: var(--cor-texto-secundario);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.teclas-info {
+  font-size: 0.9rem;
+}
+
+.teclas-info strong {
+  color: var(--cor-primaria);
+}
+
+.gameover-pontuacao {
+  font-size: 1.3rem;
+  color: var(--cor-texto-destaque) !important;
+  margin-bottom: 8px !important;
+}
+
+.gameover-pontuacao strong {
+  font-family: var(--fonte-titulo);
+  color: var(--cor-alerta);
+  font-size: 1.8rem;
+}
+
+.novo-recorde {
+  font-size: 1.1rem;
+  color: var(--cor-alerta) !important;
+  font-weight: 700;
+  animation: pulsar 1s ease-in-out infinite;
+}
+
+.overlay-conteudo .botao-acao {
+  margin-top: 16px;
+  width: 100%;
+}
+
+.overlay-conteudo .botao-secundario {
+  margin-top: 8px;
+  display: block;
+  text-align: center;
+  padding: 12px;
+  font-size: 0.9rem;
+}
+
+/* =========================================================================
+   5. MULTIPLAYER
+   ======================================================================= */
+
+.tela-multi {
+  min-height: 100vh;
+}
+
+/* --- Lobby --- */
+
+.container-lobby {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 60px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.botao-voltar-multi {
+  position: static;
+  display: inline-block;
+  width: fit-content;
+  margin-bottom: 8px;
+}
+
+.lobby-header {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.lobby-titulo {
+  font-family: var(--fonte-titulo);
+  font-size: 2rem;
+  color: var(--cor-texto-destaque);
+}
+
+.lobby-subtitulo {
+  color: var(--cor-texto-secundario);
+  font-size: 0.95rem;
+  margin-top: 4px;
+}
+
+.lobby-secao {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lobby-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--cor-texto-secundario);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.lobby-entrar {
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+}
+
+.botao-criar {
+  background: var(--gradiente-primario);
+  color: #0a0b1e;
+  font-weight: 700;
+  padding: 14px 32px;
+}
+
+.botao-criar:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sombra-neon-verde);
+}
+
+.botao-entrar {
+  background: var(--cor-terciaria);
+  color: #fff;
+  font-weight: 600;
+  padding: 14px 24px;
+  white-space: nowrap;
+}
+
+.botao-entrar:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.lobby-divisor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--cor-texto-secundario);
+  font-size: 0.85rem;
+}
+
+.lobby-divisor::before,
+.lobby-divisor::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--cor-borda);
+}
+
+/* Lista de salas */
+.lista-salas {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.salas-vazio {
+  text-align: center;
+  color: var(--cor-texto-secundario);
+  font-size: 0.9rem;
+  padding: 20px;
+}
+
+.sala-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio-borda-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sala-item:hover {
+  background: var(--cor-superficie-hover);
+  border-color: var(--cor-primaria);
+}
+
+.sala-item-codigo {
+  font-family: var(--fonte-titulo);
+  font-weight: 700;
+  color: var(--cor-texto-destaque);
+}
+
+.sala-item-jogadores {
+  font-size: 0.85rem;
+  color: var(--cor-texto-secundario);
+}
+
+/* --- Sala de espera --- */
+
+.container-sala {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 60px 24px 40px;
+  text-align: center;
+}
+
+.sala-header {
+  margin-bottom: 32px;
+}
+
+.sala-header h2 {
+  font-family: var(--fonte-titulo);
+  font-size: 1.3rem;
+  color: var(--cor-texto);
+}
+
+.sala-codigo {
+  font-size: 2rem;
+  color: var(--cor-primaria);
+  letter-spacing: 6px;
+  display: block;
+  margin-top: 8px;
+  animation: pulsar 2s ease-in-out infinite;
+}
+
+.sala-dica {
+  color: var(--cor-texto-secundario);
+  font-size: 0.9rem;
+  margin-top: 8px;
+}
+
+.sala-jogadores {
+  margin-bottom: 24px;
+}
+
+.sala-jogadores h3 {
+  font-size: 0.9rem;
+  color: var(--cor-texto-secundario);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+.lista-jogadores {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jogador-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--cor-superficie);
+  border-radius: var(--raio-borda-sm);
+  border: 1px solid var(--cor-borda);
+}
+
+.jogador-cor {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.jogador-nome {
+  flex: 1;
+  text-align: left;
+  font-weight: 600;
+  color: var(--cor-texto-destaque);
+}
+
+.jogador-status {
+  font-size: 0.8rem;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.jogador-pronto {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--cor-primaria);
+}
+
+.jogador-aguardando {
+  background: rgba(255, 170, 0, 0.15);
+  color: var(--cor-alerta);
+}
+
+.sala-acoes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.botao-pronto {
+  background: var(--cor-alerta);
+  color: #0a0b1e;
+  font-weight: 700;
+}
+
+.botao-pronto.pronto-ativo {
+  background: var(--cor-primaria);
+}
+
+.botao-pronto:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 20px rgba(255, 170, 0, 0.3);
+}
+
+.sala-status {
+  margin-top: 16px;
+  font-size: 0.85rem;
+  color: var(--cor-texto-secundario);
+}
+
+/* --- Jogo multiplayer --- */
+
+/* Placar lateral (ranking em tempo real) */
+.placar-lateral {
+  position: fixed;
+  top: 80px;
+  right: 12px;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 40;
+}
+
+.placar-jogador {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--vidro-fundo);
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--raio-borda-sm);
+  backdrop-filter: var(--vidro-blur);
+  font-size: 0.8rem;
+  transition: all 0.3s;
+}
+
+.placar-jogador.morto {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.placar-jogador-cor {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.placar-jogador-nome {
+  flex: 1;
+  font-weight: 600;
+  color: var(--cor-texto-destaque);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.placar-jogador-pts {
+  font-family: var(--fonte-titulo);
+  font-size: 0.75rem;
+  color: var(--cor-alerta);
+}
+
+.placar-jogador-coroa {
+  font-size: 0.9rem;
+}
+
+/* Feed de eventos (eliminacoes) */
+.feed-eventos {
+  position: fixed;
+  top: 80px;
+  left: 12px;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.feed-item {
+  padding: 8px 14px;
+  background: var(--vidro-fundo);
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--raio-borda-sm);
+  font-size: 0.8rem;
+  color: var(--cor-texto-secundario);
+  animation: surgirFeed 0.3s ease-out, sumirFeed 0.5s ease-in 4s forwards;
+}
+
+/* --- Resultado --- */
+
+.container-resultado {
+  max-width: 550px;
+  margin: 0 auto;
+  padding: 60px 24px 40px;
+  text-align: center;
+}
+
+.resultado-titulo {
+  font-family: var(--fonte-titulo);
+  font-size: 2rem;
+  color: var(--cor-alerta);
+  margin-bottom: 32px;
+  animation: brilharTitulo 2s ease-in-out infinite;
+}
+
+.ranking-final {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.ranking-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio-borda);
+  transition: all 0.3s;
+}
+
+.ranking-item:first-child {
+  background: rgba(255, 215, 0, 0.1);
+  border-color: rgba(255, 215, 0, 0.3);
+  transform: scale(1.05);
+}
+
+.ranking-posicao {
+  font-size: 1.5rem;
+  width: 40px;
+  text-align: center;
+}
+
+.ranking-cor {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ranking-info {
+  flex: 1;
+  text-align: left;
+}
+
+.ranking-nome {
+  font-weight: 700;
+  color: var(--cor-texto-destaque);
+  font-size: 1.05rem;
+}
+
+.ranking-stats {
+  font-size: 0.8rem;
+  color: var(--cor-texto-secundario);
+  margin-top: 2px;
+}
+
+.ranking-pontuacao {
+  font-family: var(--fonte-titulo);
+  font-size: 1.2rem;
+  color: var(--cor-alerta);
+}
+
+.resultado-acoes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.resultado-acoes .botao-secundario {
+  text-align: center;
+  padding: 14px;
+}
+
+/* =========================================================================
+   6. COMPONENTES COMPARTILHADOS
+   ======================================================================= */
+
+/* Controles mobile (touch) */
+.controles-mobile {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.controles-meio {
+  display: flex;
+  gap: 4px;
+}
+
+.botao-direcao {
+  width: 64px;
+  height: 64px;
+  background: var(--vidro-fundo);
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--raio-borda-sm);
+  color: var(--cor-texto);
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: var(--vidro-blur);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.botao-direcao:active {
+  background: var(--cor-superficie-hover);
+  transform: scale(0.95);
+}
+
+/* =========================================================================
+   7. ANIMACOES E KEYFRAMES
+   ======================================================================= */
+
+@keyframes brilharTitulo {
+  0%, 100% { text-shadow: 0 0 40px rgba(0, 255, 136, 0.3); }
+  50%      { text-shadow: 0 0 60px rgba(0, 255, 136, 0.6), 0 0 80px rgba(0, 255, 136, 0.2); }
+}
+
+@keyframes balancoCobra {
+  0%, 100% { transform: rotate(-5deg); }
+  50%      { transform: rotate(5deg); }
+}
+
+@keyframes pulsar {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.7; }
+}
+
+@keyframes surgir {
+  from { opacity: 0; transform: scale(0.9) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes surgirFeed {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes sumirFeed {
+  from { opacity: 1; }
+  to   { opacity: 0; transform: translateY(-10px); }
+}
+
+@keyframes piscar {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+/* =========================================================================
+   8. RESPONSIVIDADE
+   ======================================================================= */
+
+/* Detectar dispositivo touch para exibir controles mobile */
+@media (hover: none) and (pointer: coarse) {
+  .controles-mobile {
+    display: flex;
+  }
+
+  .container-jogo {
+    padding-bottom: 160px;
+  }
+
+  .rodape-menu {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .titulo-principal {
+    font-size: 2.5rem;
+  }
+
+  .titulo-destaque {
+    font-size: 3rem;
+  }
+
+  .hud-solo,
+  .hud-multi {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .hud-valor {
+    font-size: 1.1rem;
+  }
+
+  .hud-centro {
+    gap: 16px;
+  }
+
+  .placar-lateral {
+    width: 150px;
+    right: 4px;
+    top: 60px;
+  }
+
+  .feed-eventos {
+    display: none;
+  }
+
+  .container-jogo {
+    padding-top: 60px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container-menu {
+    padding: 24px 16px 40px;
+  }
+
+  .titulo-principal {
+    font-size: 2rem;
+  }
+
+  .titulo-destaque {
+    font-size: 2.5rem;
+  }
+
+  .botao-menu {
+    padding: 16px;
+  }
+
+  .hud-label {
+    display: none;
+  }
+
+  .placar-lateral {
+    width: 120px;
+    font-size: 0.7rem;
+  }
+}

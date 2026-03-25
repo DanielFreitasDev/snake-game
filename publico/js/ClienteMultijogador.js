@@ -169,7 +169,7 @@ class ClienteMultijogador {
      * Tratamento de desconexao inesperada.
      */
     this.socket.on('disconnect', () => {
-      this._exibirErro('Conexao com o servidor perdida. Tente novamente.');
+      this._exibirErro('Conexão com o servidor perdida. Tente novamente.');
       this._mostrarTela('lobby');
     });
   }
@@ -215,7 +215,7 @@ class ClienteMultijogador {
   _atualizarListaSalas() {
     this.socket.emit('listar-salas', (salas) => {
       if (salas.length === 0) {
-        this.elListaSalas.innerHTML = '<p class="salas-vazio">Nenhuma sala disponivel. Crie uma!</p>';
+        this.elListaSalas.innerHTML = '<p class="salas-vazio">Nenhuma sala disponível. Crie uma!</p>';
         return;
       }
 
@@ -289,7 +289,7 @@ class ClienteMultijogador {
 
     const codigo = codigoManual || this.elInputCodigoSala.value.trim().toUpperCase();
     if (!codigo) {
-      this._exibirErro('Digite o codigo da sala.');
+      this._exibirErro('Digite o código da sala.');
       return;
     }
 
@@ -345,7 +345,7 @@ class ClienteMultijogador {
       const statusTexto = jogador.pronto ? 'Pronto!' : 'Aguardando...';
       const statusClasse = jogador.pronto ? 'jogador-pronto' : 'jogador-aguardando';
       const indicadorBot = jogador.ehBot ? ' 🤖' : '';
-      const indicadorEu = ehEu ? ' (voce)' : '';
+      const indicadorEu = ehEu ? ' (você)' : '';
 
       if (jogador.ehBot) quantidadeBots++;
       if (!jogador.pronto) todosProntos = false;
@@ -392,7 +392,7 @@ class ClienteMultijogador {
 
     // Status textual
     if (!temMinimo) {
-      this.elSalaStatus.textContent = 'Aguardando mais jogadores... (minimo 2)';
+      this.elSalaStatus.textContent = 'Aguardando mais jogadores... (mínimo 2)';
     } else if (!todosProntos) {
       this.elSalaStatus.textContent = 'Aguardando todos ficarem prontos...';
     } else {
@@ -791,7 +791,7 @@ class ClienteMultijogador {
     // Sala: Marcar pronto
     this.elBotaoPronto.addEventListener('click', () => {
       this.estouPronto = !this.estouPronto;
-      this.elBotaoPronto.textContent = this.estouPronto ? 'Cancelar Prontidao' : 'Estou Pronto!';
+      this.elBotaoPronto.textContent = this.estouPronto ? 'Cancelar Prontidão' : 'Estou Pronto!';
       this.elBotaoPronto.classList.toggle('pronto-ativo', this.estouPronto);
       this.socket.emit('jogador-pronto');
     });

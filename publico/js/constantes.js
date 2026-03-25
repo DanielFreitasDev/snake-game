@@ -48,7 +48,7 @@ const CONSTANTES = {
       pontos: 10,
       segmentos: 1,
       probabilidade: 0.45,
-      descricao: 'Maca',
+      descricao: 'Maçã',
     },
     /** Boost de velocidade temporario */
     VELOCIDADE: {
@@ -79,7 +79,7 @@ const CONSTANTES = {
       pontos: 25,
       segmentos: 0,
       probabilidade: 0.10,
-      descricao: 'Coracao',
+      descricao: 'Coração',
     },
     /** Escudo temporario: protege contra colisoes */
     ESCUDO: {

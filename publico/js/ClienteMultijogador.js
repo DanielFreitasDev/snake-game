@@ -52,6 +52,8 @@ class ClienteMultijogador {
     this.elBotaoAdicionarBot = document.getElementById('botao-adicionar-bot');
     this.elBotaoRemoverBot = document.getElementById('botao-remover-bot');
     this.elQuantidadeBots = document.getElementById('quantidade-bots');
+    this.elLinhaDificuldade = document.getElementById('linha-dificuldade');
+    this.elBotoesDificuldade = document.querySelectorAll('#bots-dificuldade .botao-dificuldade');
 
     // Jogo
     this.canvasMulti = document.getElementById('canvas-multi');
@@ -360,9 +362,19 @@ class ClienteMultijogador {
     this.elQuantidadeBots.textContent = quantidadeBots;
 
     // Habilitar/desabilitar botoes de bot
-    const salaCeia = infoSala.jogadores.length >= infoSala.maxJogadores;
-    this.elBotaoAdicionarBot.disabled = salaCeia;
+    const salaCheia = infoSala.jogadores.length >= infoSala.maxJogadores;
+    this.elBotaoAdicionarBot.disabled = salaCheia;
     this.elBotaoRemoverBot.disabled = quantidadeBots === 0;
+
+    // Mostrar seletor de dificuldade apenas quando ha bots
+    this.elLinhaDificuldade.style.display = quantidadeBots > 0 ? 'flex' : 'none';
+
+    // Sincronizar botao de dificuldade ativo
+    if (infoSala.dificuldadeBots) {
+      this.elBotoesDificuldade.forEach(btn => {
+        btn.classList.toggle('ativo', btn.dataset.dificuldade === infoSala.dificuldadeBots);
+      });
+    }
 
     this.elListaJogadoresSala.innerHTML = html;
 
@@ -730,6 +742,14 @@ class ClienteMultijogador {
     // Sala: Remover bot
     this.elBotaoRemoverBot.addEventListener('click', () => {
       this.socket.emit('remover-bot', () => {});
+    });
+
+    // Sala: Alterar dificuldade dos bots
+    this.elBotoesDificuldade.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const nivel = btn.dataset.dificuldade;
+        this.socket.emit('alterar-dificuldade-bots', nivel, () => {});
+      });
     });
 
     // Sala: Marcar pronto

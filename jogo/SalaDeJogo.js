@@ -53,6 +53,9 @@ class SalaDeJogo {
     /** @type {number} Contador sequencial para IDs de bots */
     this.contadorBots = 0;
 
+    /** @type {string} Nivel de dificuldade dos bots: 'facil' | 'normal' | 'dificil' */
+    this.dificuldadeBots = 'normal';
+
     /** @type {number} Tempo restante da partida em segundos */
     this.tempoRestante = CONSTANTES.MULTI.TEMPO_PARTIDA;
 
@@ -207,6 +210,17 @@ class SalaDeJogo {
 
     this.jogadores.delete(ultimoBotId);
     return { sucesso: true };
+  }
+
+  /**
+   * Altera o nivel de dificuldade dos bots da sala.
+   * @param {string} nivel - 'facil' | 'normal' | 'dificil'.
+   */
+  alterarDificuldadeBots(nivel) {
+    const validos = ['facil', 'normal', 'dificil'];
+    if (validos.includes(nivel)) {
+      this.dificuldadeBots = nivel;
+    }
   }
 
   /**
@@ -953,7 +967,8 @@ class SalaDeJogo {
       if (jogador.filaDeDirecoes.length > 0) continue;
 
       const novaDirecao = BotIA.decidirDirecao(
-        jogador, todosJogadores, this.comidas, this.largura, this.altura
+        jogador, todosJogadores, this.comidas, this.largura, this.altura,
+        this.dificuldadeBots
       );
 
       if (novaDirecao !== jogador.direcao) {
@@ -1032,6 +1047,7 @@ class SalaDeJogo {
       estado: this.estado,
       jogadores: listaJogadores,
       maxJogadores: this.maxJogadores,
+      dificuldadeBots: this.dificuldadeBots,
     };
   }
 

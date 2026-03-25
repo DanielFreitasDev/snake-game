@@ -100,11 +100,21 @@
 
       <!-- Controle de bots -->
       <div class="sala-bots">
-        <span class="bots-label">Bots</span>
-        <div class="bots-controles">
-          <button id="botao-remover-bot" class="botao-bot">−</button>
-          <span id="quantidade-bots" class="bots-quantidade">0</span>
-          <button id="botao-adicionar-bot" class="botao-bot">+</button>
+        <div class="bots-linha">
+          <span class="bots-label">Bots</span>
+          <div class="bots-controles">
+            <button id="botao-remover-bot" class="botao-bot">−</button>
+            <span id="quantidade-bots" class="bots-quantidade">0</span>
+            <button id="botao-adicionar-bot" class="botao-bot">+</button>
+          </div>
+        </div>
+        <div class="bots-linha" id="linha-dificuldade" style="display:none;">
+          <span class="bots-label">Dificuldade</span>
+          <div class="bots-dificuldade" id="bots-dificuldade">
+            <button class="botao-dificuldade" data-dificuldade="facil">Facil</button>
+            <button class="botao-dificuldade ativo" data-dificuldade="normal">Normal</button>
+            <button class="botao-dificuldade" data-dificuldade="dificil">Dificil</button>
+          </div>
         </div>
       </div>
 

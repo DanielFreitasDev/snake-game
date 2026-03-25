@@ -920,14 +920,20 @@ button {
 
 .sala-bots {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
+  flex-direction: column;
+  gap: 12px;
   margin-top: 20px;
-  padding: 12px 16px;
+  padding: 14px 16px;
   background: rgba(255, 255, 255, 0.04);
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bots-linha {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
 }
 
 .bots-label {
@@ -977,6 +983,34 @@ button {
   color: var(--cor-texto);
   min-width: 20px;
   text-align: center;
+}
+
+.bots-dificuldade {
+  display: flex;
+  gap: 6px;
+}
+
+.botao-dificuldade {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--cor-texto-secundario);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.botao-dificuldade:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.botao-dificuldade.ativo {
+  background: var(--cor-primaria);
+  color: #0a0b1e;
+  border-color: var(--cor-primaria);
 }
 
 .sala-acoes {

@@ -282,6 +282,21 @@ io.on('connection', (socket) => {
     }
   });
 
+  /**
+   * Altera a dificuldade dos bots na sala.
+   */
+  socket.on('alterar-dificuldade-bots', (nivel, callback) => {
+    const codigo = jogadorParaSala.get(socket.id);
+    if (!codigo) return callback({ sucesso: false });
+
+    const sala = salas.get(codigo);
+    if (!sala || sala.estado !== 'aguardando') return callback({ sucesso: false });
+
+    sala.alterarDificuldadeBots(nivel);
+    callback({ sucesso: true });
+    io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
+  });
+
   /* -----------------------------------------------------------------------
    * SALA: Sair e voltar ao lobby
    * --------------------------------------------------------------------- */

@@ -267,12 +267,53 @@ button {
 }
 
 .titulo-destaque {
-  display: block;
   background: var(--gradiente-primario);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  font-size: 4rem;
+}
+
+/* S estilizado como cobra */
+.letra-cobra {
+  position: relative;
+  display: inline-block;
+  background: var(--gradiente-primario);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.5));
+}
+
+/* Olhinhos da cobra */
+.letra-cobra::before {
+  content: '';
+  position: absolute;
+  width: 0.09em;
+  height: 0.09em;
+  background: #fff;
+  border-radius: 50%;
+  top: 0.08em;
+  left: 0.08em;
+  box-shadow:
+    0.28em 0 0 0 #fff,
+    0 0 0.06em 0.02em rgba(255, 255, 255, 0.9),
+    0.28em 0 0.06em 0.02em rgba(255, 255, 255, 0.9);
+  z-index: 2;
+}
+
+/* Lingua bifurcada */
+.letra-cobra::after {
+  content: '';
+  position: absolute;
+  right: -0.25em;
+  top: 0.12em;
+  width: 0.28em;
+  height: 0.16em;
+  background: #ff2244;
+  clip-path: polygon(0% 35%, 45% 43%, 100% 0%, 52% 50%, 100% 100%, 45% 57%, 0% 65%);
+  filter: drop-shadow(0 0 3px rgba(255, 34, 68, 0.5));
+  animation: linguaCobra 3s ease-in-out infinite;
+  transform-origin: left center;
 }
 
 .subtitulo {
@@ -1321,6 +1362,12 @@ button {
   50%      { transform: rotate(5deg); }
 }
 
+@keyframes linguaCobra {
+  0%, 65%, 100% { transform: scaleX(0); }
+  70%, 78%, 86% { transform: scaleX(1); }
+  74%, 82%      { transform: scaleX(0.3); }
+}
+
 @keyframes pulsar {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.7; }
@@ -1370,10 +1417,6 @@ button {
     font-size: 2.5rem;
   }
 
-  .titulo-destaque {
-    font-size: 3rem;
-  }
-
   .hud-solo,
   .hud-multi {
     padding: 8px 12px;
@@ -1411,10 +1454,6 @@ button {
 
   .titulo-principal {
     font-size: 2rem;
-  }
-
-  .titulo-destaque {
-    font-size: 2.5rem;
   }
 
   .botao-menu {

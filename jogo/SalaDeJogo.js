@@ -425,7 +425,7 @@ class SalaDeJogo {
       case 'velocidade':
         // Ativar boost de velocidade
         jogador.efeitos.velocidade.ativo = true;
-        jogador.efeitos.velocidade.tempoRestante = tipos.VELOCIDADE.duracao;
+        jogador.efeitos.velocidade.tempoRestante += tipos.VELOCIDADE.duracao;
         jogador.velocidadeAtual = CONSTANTES.COBRA.VELOCIDADE_RAPIDA;
         break;
 
@@ -442,7 +442,7 @@ class SalaDeJogo {
       case 'escudo':
         // Ativar escudo protetor
         jogador.efeitos.escudo.ativo = true;
-        jogador.efeitos.escudo.tempoRestante = tipos.ESCUDO.duracao;
+        jogador.efeitos.escudo.tempoRestante += tipos.ESCUDO.duracao;
         break;
     }
   }

@@ -383,7 +383,7 @@ class JogoSolo {
 
       case 'velocidade':
         this.efeitos.velocidade.ativo = true;
-        this.efeitos.velocidade.tempoRestante = tipos.VELOCIDADE.duracao;
+        this.efeitos.velocidade.tempoRestante += tipos.VELOCIDADE.duracao;
         this.velocidadeAtual = CONSTANTES.COBRA.VELOCIDADE_RAPIDA;
         break;
 
@@ -397,7 +397,7 @@ class JogoSolo {
 
       case 'escudo':
         this.efeitos.escudo.ativo = true;
-        this.efeitos.escudo.tempoRestante = tipos.ESCUDO.duracao;
+        this.efeitos.escudo.tempoRestante += tipos.ESCUDO.duracao;
         break;
     }
   }

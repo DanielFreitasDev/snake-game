@@ -214,11 +214,29 @@
     </div>
   </div>
 
+  <!-- Botao de som (mute/unmute) -->
+  <button id="botao-som" class="botao-som" title="Ativar/Desativar som">
+    🔊
+  </button>
+
   <!-- Scripts: Socket.IO (servido automaticamente) + modulos do jogo -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/constantes.js"></script>
   <script src="/js/SistemaDeParticulas.js"></script>
   <script src="/js/Renderizador.js"></script>
+  <script src="/js/SistemaDeSom.js"></script>
   <script src="/js/ClienteMultijogador.js"></script>
+  <script>
+    // Controle do botao de som
+    document.getElementById('botao-som').addEventListener('click', function() {
+      if (!window.som) return;
+      const mudo = window.som.alternarMudo();
+      this.textContent = mudo ? '🔇' : '🔊';
+    });
+    // Estado inicial do botao
+    if (window.som && window.som.mudo) {
+      document.getElementById('botao-som').textContent = '🔇';
+    }
+  </script>
 </body>
 </html>

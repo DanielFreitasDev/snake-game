@@ -142,6 +142,9 @@ class JogoSolo {
     // Mudar estado e iniciar loop logico
     this.estado = 'jogando';
 
+    // Som de inicio
+    if (window.som) window.som.iniciarJogo();
+
     if (this.intervaloJogo) clearInterval(this.intervaloJogo);
     const msPerTick = 1000 / CONSTANTES.SOLO.TICKS_POR_SEGUNDO;
     this.intervaloJogo = setInterval(() => this._tick(), msPerTick);
@@ -183,6 +186,11 @@ class JogoSolo {
       this.recorde = this.pontuacao;
       this._salvarRecorde(this.pontuacao);
       this.elRecorde.textContent = this.recorde.toLocaleString('pt-BR');
+      // Som de novo recorde
+      if (window.som) window.som.novoRecorde();
+    } else {
+      // Som de game over
+      if (window.som) window.som.gameOver();
     }
 
     // Exibir tela de game over
@@ -289,6 +297,9 @@ class JogoSolo {
       // Inverter direcao como "rebote"
       this.direcao = CONSTANTES.DIRECAO_OPOSTA[this.direcao];
       this.filaDeDirecoes = [];
+
+      // Som de escudo bloqueando
+      if (window.som) window.som.escudoBloqueou();
       return;
     }
 
@@ -301,6 +312,9 @@ class JogoSolo {
       this._gameOver();
       return;
     }
+
+    // Som de morte (perdeu vida)
+    if (window.som) window.som.morrer();
 
     // Respawn: reposicionar cobra
     this._respawnar();
@@ -331,6 +345,9 @@ class JogoSolo {
     // Invulnerabilidade temporaria (3 segundos)
     this.invulneravel = true;
     this.tempoInvulneravel = 3000;
+
+    // Som de respawn
+    if (window.som) window.som.respawnar();
 
     // Efeito visual de respawn
     const tam = this.renderizador.tamanhoCelula;
@@ -364,6 +381,17 @@ class JogoSolo {
 
         // Aplicar efeito conforme o tipo
         this._aplicarEfeitoComida(comida);
+
+        // Som conforme o tipo de comida
+        if (window.som) {
+          switch (comida.tipo) {
+            case 'normal': window.som.comerNormal(); break;
+            case 'dourada': window.som.comerDourada(); break;
+            case 'velocidade': window.som.comerVelocidade(); break;
+            case 'vida': window.som.comerVida(); break;
+            case 'escudo': window.som.comerEscudo(); break;
+          }
+        }
 
         // Efeitos visuais: explosao de particulas e texto flutuante
         const cx = comida.posicao.x * tam + tam / 2;

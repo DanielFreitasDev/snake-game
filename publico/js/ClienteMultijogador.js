@@ -144,6 +144,7 @@ class ClienteMultijogador {
      */
     this.socket.on('partida-iniciada', () => {
       this._iniciarTelaJogo();
+      if (window.som) window.som.iniciarJogo();
     });
 
     /**
@@ -162,6 +163,7 @@ class ClienteMultijogador {
      */
     this.socket.on('partida-finalizada', (resultado) => {
       this._exibirResultado(resultado);
+      if (window.som) window.som.partidaFinalizada();
     });
 
     /**
@@ -570,10 +572,12 @@ class ClienteMultijogador {
           this._adicionarFeed(
             `💀 ${evento.eliminadorApelido} eliminou ${evento.eliminadoApelido}!`
           );
+          if (window.som) window.som.eliminacao();
           break;
 
         case 'morte':
           this._adicionarFeed(`☠️ ${evento.apelido} foi eliminado!`);
+          if (window.som) window.som.morrer();
           break;
 
         case 'comida_coletada':
@@ -586,6 +590,16 @@ class ClienteMultijogador {
               10
             );
           }
+          // Som da comida (apenas se o jogador local coletou)
+          if (window.som && evento.jogadorId === this.socket.id) {
+            switch (evento.tipoComida) {
+              case 'normal': window.som.comerNormal(); break;
+              case 'dourada': window.som.comerDourada(); break;
+              case 'velocidade': window.som.comerVelocidade(); break;
+              case 'vida': window.som.comerVida(); break;
+              case 'escudo': window.som.comerEscudo(); break;
+            }
+          }
           break;
 
         case 'segmento_removido':
@@ -596,14 +610,17 @@ class ClienteMultijogador {
               '#ff4444'
             );
           }
+          if (window.som) window.som.segmentoRemovido();
           break;
 
         case 'respawn':
           this._adicionarFeed(`✨ Jogador renasceu! (${evento.vidasRestantes} vidas)`);
+          if (window.som && evento.jogadorId === this.socket.id) window.som.respawnar();
           break;
 
         case 'arena_encolhendo':
           this._adicionarFeed('⚠️ Arena encolhendo! Cuidado!');
+          if (window.som) window.som.arenaEncolhendo();
           break;
 
         case 'arena_encolheu':

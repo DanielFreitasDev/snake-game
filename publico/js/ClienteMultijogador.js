@@ -49,6 +49,9 @@ class ClienteMultijogador {
     this.elBotaoIniciarPartida = document.getElementById('botao-iniciar-partida');
     this.elBotaoSairSala = document.getElementById('botao-sair-sala');
     this.elSalaStatus = document.getElementById('sala-status');
+    this.elBotaoAdicionarBot = document.getElementById('botao-adicionar-bot');
+    this.elBotaoRemoverBot = document.getElementById('botao-remover-bot');
+    this.elQuantidadeBots = document.getElementById('quantidade-bots');
 
     // Jogo
     this.canvasMulti = document.getElementById('canvas-multi');
@@ -332,21 +335,34 @@ class ClienteMultijogador {
     let todosProntos = true;
     let temMinimo = infoSala.jogadores.length >= 2;
 
+    let quantidadeBots = 0;
+
     for (const jogador of infoSala.jogadores) {
       const ehEu = jogador.id === this.socket.id;
       const statusTexto = jogador.pronto ? 'Pronto!' : 'Aguardando...';
       const statusClasse = jogador.pronto ? 'jogador-pronto' : 'jogador-aguardando';
+      const indicadorBot = jogador.ehBot ? ' 🤖' : '';
+      const indicadorEu = ehEu ? ' (voce)' : '';
 
+      if (jogador.ehBot) quantidadeBots++;
       if (!jogador.pronto) todosProntos = false;
 
       html += `
         <div class="jogador-item">
           <span class="jogador-cor" style="background: ${jogador.cor.principal}; box-shadow: 0 0 8px ${jogador.cor.principal};"></span>
-          <span class="jogador-nome">${jogador.apelido}${ehEu ? ' (voce)' : ''}</span>
+          <span class="jogador-nome">${jogador.apelido}${indicadorBot}${indicadorEu}</span>
           <span class="jogador-status ${statusClasse}">${statusTexto}</span>
         </div>
       `;
     }
+
+    // Atualizar contador de bots
+    this.elQuantidadeBots.textContent = quantidadeBots;
+
+    // Habilitar/desabilitar botoes de bot
+    const salaCeia = infoSala.jogadores.length >= infoSala.maxJogadores;
+    this.elBotaoAdicionarBot.disabled = salaCeia;
+    this.elBotaoRemoverBot.disabled = quantidadeBots === 0;
 
     this.elListaJogadoresSala.innerHTML = html;
 
@@ -492,11 +508,12 @@ class ClienteMultijogador {
     for (const j of jogadoresOrdenados) {
       const coroa = j.ehRei ? '<span class="placar-jogador-coroa">👑</span>' : '';
       const classeVivo = j.vivo ? '' : 'morto';
+      const botTag = j.ehBot ? ' 🤖' : '';
       placarHtml += `
         <div class="placar-jogador ${classeVivo}">
           <span class="placar-jogador-cor" style="background: ${j.cor.principal};"></span>
           ${coroa}
-          <span class="placar-jogador-nome">${j.apelido}</span>
+          <span class="placar-jogador-nome">${j.apelido}${botTag}</span>
           <span class="placar-jogador-pts">${j.pontuacao}</span>
         </div>
       `;
@@ -596,13 +613,14 @@ class ClienteMultijogador {
 
     for (const item of ranking) {
       const medalha = item.posicao === 1 ? '🥇' : item.posicao === 2 ? '🥈' : item.posicao === 3 ? '🥉' : `${item.posicao}`;
+      const botTag = item.ehBot ? ' 🤖' : '';
 
       html += `
         <div class="ranking-item">
           <span class="ranking-posicao">${medalha}</span>
           <span class="ranking-cor" style="background: ${item.cor.principal}; box-shadow: 0 0 8px ${item.cor.principal};"></span>
           <div class="ranking-info">
-            <div class="ranking-nome">${item.apelido}</div>
+            <div class="ranking-nome">${item.apelido}${botTag}</div>
             <div class="ranking-stats">${item.eliminacoes} eliminacoes</div>
           </div>
           <span class="ranking-pontuacao">${item.pontuacao.toLocaleString('pt-BR')}</span>
@@ -703,6 +721,16 @@ class ClienteMultijogador {
 
     // Lobby: Atualizar lista de salas
     this.elBotaoAtualizarSalas.addEventListener('click', () => this._atualizarListaSalas());
+
+    // Sala: Adicionar bot
+    this.elBotaoAdicionarBot.addEventListener('click', () => {
+      this.socket.emit('adicionar-bot', () => {});
+    });
+
+    // Sala: Remover bot
+    this.elBotaoRemoverBot.addEventListener('click', () => {
+      this.socket.emit('remover-bot', () => {});
+    });
 
     // Sala: Marcar pronto
     this.elBotaoPronto.addEventListener('click', () => {

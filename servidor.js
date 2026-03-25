@@ -235,6 +235,54 @@ io.on('connection', (socket) => {
   });
 
   /* -----------------------------------------------------------------------
+   * SALA: Gerenciamento de bots
+   * --------------------------------------------------------------------- */
+
+  /**
+   * Adiciona um bot a sala do jogador.
+   */
+  socket.on('adicionar-bot', (callback) => {
+    const codigo = jogadorParaSala.get(socket.id);
+    if (!codigo) return callback({ sucesso: false, erro: 'Voce nao esta em uma sala.' });
+
+    const sala = salas.get(codigo);
+    if (!sala) return callback({ sucesso: false, erro: 'Sala nao encontrada.' });
+
+    if (sala.estado !== 'aguardando') {
+      return callback({ sucesso: false, erro: 'A partida ja esta em andamento.' });
+    }
+
+    const resultado = sala.adicionarBot();
+    callback(resultado);
+
+    if (resultado.sucesso) {
+      io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
+    }
+  });
+
+  /**
+   * Remove o ultimo bot da sala do jogador.
+   */
+  socket.on('remover-bot', (callback) => {
+    const codigo = jogadorParaSala.get(socket.id);
+    if (!codigo) return callback({ sucesso: false, erro: 'Voce nao esta em uma sala.' });
+
+    const sala = salas.get(codigo);
+    if (!sala) return callback({ sucesso: false, erro: 'Sala nao encontrada.' });
+
+    if (sala.estado !== 'aguardando') {
+      return callback({ sucesso: false, erro: 'A partida ja esta em andamento.' });
+    }
+
+    const resultado = sala.removerBot();
+    callback(resultado);
+
+    if (resultado.sucesso) {
+      io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
+    }
+  });
+
+  /* -----------------------------------------------------------------------
    * SALA: Sair e voltar ao lobby
    * --------------------------------------------------------------------- */
 
@@ -279,8 +327,8 @@ function _sairDaSalaAtual(socket) {
     // Notificar demais jogadores
     io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
 
-    // Limpar sala vazia
-    if (sala.obterQuantidadeJogadores() === 0) {
+    // Limpar sala quando nao houver mais jogadores humanos
+    if (sala.obterQuantidadeHumanos() === 0) {
       sala.parar();
       salas.delete(codigo);
       console.log(`[Sala] Sala ${codigo} removida (vazia)`);

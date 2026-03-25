@@ -916,6 +916,69 @@ button {
   color: var(--cor-alerta);
 }
 
+/* --- Controle de bots --- */
+
+.sala-bots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bots-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--cor-texto-secundario);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.bots-controles {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.botao-bot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cor-texto);
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.botao-bot:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--cor-primaria);
+  transform: scale(1.1);
+}
+
+.botao-bot:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.bots-quantidade {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--cor-texto);
+  min-width: 20px;
+  text-align: center;
+}
+
 .sala-acoes {
   display: flex;
   flex-direction: column;

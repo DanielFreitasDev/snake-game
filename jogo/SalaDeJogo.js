@@ -17,6 +17,7 @@
  */
 
 const CONSTANTES = require('../publico/js/constantes');
+const BotIA = require('./BotIA');
 
 class SalaDeJogo {
   /**
@@ -48,6 +49,9 @@ class SalaDeJogo {
 
     /** @type {number} Indice para atribuir cores sequenciais */
     this.indiceCorAtual = 0;
+
+    /** @type {number} Contador sequencial para IDs de bots */
+    this.contadorBots = 0;
 
     /** @type {number} Tempo restante da partida em segundos */
     this.tempoRestante = CONSTANTES.MULTI.TEMPO_PARTIDA;
@@ -83,6 +87,7 @@ class SalaDeJogo {
       id: socketId,
       apelido: apelido.substring(0, 15), // Limitar tamanho do apelido
       cor,
+      ehBot: false,
       pronto: false,
       cobra: [],
       direcao: 'direita',
@@ -137,6 +142,83 @@ class SalaDeJogo {
     if (jogador) {
       jogador.pronto = !jogador.pronto;
     }
+  }
+
+  /**
+   * Adiciona um bot a sala com nome aleatorio e divertido.
+   * Bots entram automaticamente como "prontos".
+   * @returns {{sucesso: boolean, erro?: string}}
+   */
+  adicionarBot() {
+    if (this.jogadores.size >= this.maxJogadores) {
+      return { sucesso: false, erro: 'A sala esta cheia.' };
+    }
+
+    const cor = CONSTANTES.CORES_COBRAS[this.indiceCorAtual % CONSTANTES.CORES_COBRAS.length];
+    this.indiceCorAtual++;
+    this.contadorBots++;
+
+    const nomesUsados = [...this.jogadores.values()].map(j => j.apelido);
+    const apelido = BotIA.sortearNome(nomesUsados);
+    const botId = `bot-${this.contadorBots}-${Date.now()}`;
+
+    this.jogadores.set(botId, {
+      id: botId,
+      apelido,
+      cor,
+      ehBot: true,
+      pronto: true,
+      cobra: [],
+      direcao: 'direita',
+      proximaDirecao: 'direita',
+      filaDeDirecoes: [],
+      pontuacao: 0,
+      vidas: CONSTANTES.COBRA.VIDAS_INICIAIS,
+      efeitos: {
+        velocidade: { ativo: false, tempoRestante: 0 },
+        escudo: { ativo: false, tempoRestante: 0 },
+      },
+      vivo: true,
+      invulneravel: false,
+      tempoInvulneravel: 0,
+      contadorMovimento: 0,
+      velocidadeAtual: CONSTANTES.COBRA.VELOCIDADE_BASE,
+      crescimento: 0,
+      eliminacoes: 0,
+    });
+
+    return { sucesso: true, botId };
+  }
+
+  /**
+   * Remove um bot da sala (o ultimo adicionado).
+   * @returns {{sucesso: boolean, erro?: string}}
+   */
+  removerBot() {
+    // Encontrar o ultimo bot adicionado
+    let ultimoBotId = null;
+    for (const [id, jogador] of this.jogadores) {
+      if (jogador.ehBot) ultimoBotId = id;
+    }
+
+    if (!ultimoBotId) {
+      return { sucesso: false, erro: 'Nenhum bot para remover.' };
+    }
+
+    this.jogadores.delete(ultimoBotId);
+    return { sucesso: true };
+  }
+
+  /**
+   * Retorna a quantidade de jogadores humanos na sala.
+   * @returns {number}
+   */
+  obterQuantidadeHumanos() {
+    let contagem = 0;
+    for (const jogador of this.jogadores.values()) {
+      if (!jogador.ehBot) contagem++;
+    }
+    return contagem;
   }
 
   /**
@@ -209,6 +291,7 @@ class SalaDeJogo {
         pontuacao: j.pontuacao,
         eliminacoes: j.eliminacoes,
         cor: j.cor,
+        ehBot: j.ehBot,
       }));
 
     this.io.to(this.codigo).emit('partida-finalizada', { ranking });
@@ -273,25 +356,28 @@ class SalaDeJogo {
     // 1. Atualizar temporizadores de efeitos e invulnerabilidade
     this._atualizarTemporizadores();
 
-    // 2. Mover todas as cobras
+    // 2. Atualizar decisoes dos bots
+    this._atualizarBots();
+
+    // 3. Mover todas as cobras
     this._moverCobras();
 
-    // 3. Verificar colisoes com comida
+    // 4. Verificar colisoes com comida
     this._verificarColisaoComida();
 
-    // 4. Verificar colisoes com paredes e propria cobra
+    // 5. Verificar colisoes com paredes e propria cobra
     this._verificarColisaoParedes();
     this._verificarAutoColisao();
 
-    // 5. Verificar colisoes entre cobras (regra especial)
+    // 6. Verificar colisoes entre cobras (regra especial)
     this._verificarColisaoEntreCobras();
 
-    // 6. Reabastecer comida se necessario
+    // 7. Reabastecer comida se necessario
     while (this.comidas.length < CONSTANTES.MULTI.QUANTIDADE_COMIDA) {
       this._gerarComida();
     }
 
-    // 7. Atualizar tempo restante (1 segundo = TICKS_POR_SEGUNDO ticks)
+    // 8. Atualizar tempo restante (1 segundo = TICKS_POR_SEGUNDO ticks)
     if (this.tickAtual % CONSTANTES.MULTI.TICKS_POR_SEGUNDO === 0) {
       this.tempoRestante--;
       if (this.tempoRestante <= 0) {
@@ -300,7 +386,7 @@ class SalaDeJogo {
       }
     }
 
-    // 8. Verificar se resta apenas 1 jogador vivo
+    // 9. Verificar se resta apenas 1 jogador vivo
     const vivos = this._contarJogadoresVivos();
     if (vivos <= 1 && this.jogadores.size > 1) {
       // Dar um pequeno delay para a ultima acao ser visivel
@@ -312,7 +398,7 @@ class SalaDeJogo {
       return;
     }
 
-    // 9. Broadcast do estado atualizado para todos os clientes
+    // 10. Broadcast do estado atualizado para todos os clientes
     this.io.to(this.codigo).emit('estado-jogo', this._obterEstadoJogo());
   }
 
@@ -849,6 +935,34 @@ class SalaDeJogo {
   }
 
   /* =========================================================================
+   * INTELIGENCIA ARTIFICIAL DOS BOTS
+   * ======================================================================= */
+
+  /**
+   * Atualiza as decisoes de direcao de todos os bots vivos.
+   * Chamado a cada tick, antes de mover as cobras.
+   * @private
+   */
+  _atualizarBots() {
+    const todosJogadores = [...this.jogadores.values()];
+
+    for (const jogador of todosJogadores) {
+      if (!jogador.ehBot || !jogador.vivo) continue;
+
+      // So decidir quando a fila esta vazia
+      if (jogador.filaDeDirecoes.length > 0) continue;
+
+      const novaDirecao = BotIA.decidirDirecao(
+        jogador, todosJogadores, this.comidas, this.largura, this.altura
+      );
+
+      if (novaDirecao !== jogador.direcao) {
+        jogador.filaDeDirecoes.push(novaDirecao);
+      }
+    }
+  }
+
+  /* =========================================================================
    * TEMPORIZADORES E EFEITOS
    * ======================================================================= */
 
@@ -909,6 +1023,7 @@ class SalaDeJogo {
         apelido: jogador.apelido,
         cor: jogador.cor,
         pronto: jogador.pronto,
+        ehBot: jogador.ehBot,
       });
     }
 
@@ -957,6 +1072,7 @@ class SalaDeJogo {
         },
         ehRei: jogador.id === idRei,
         eliminacoes: jogador.eliminacoes,
+        ehBot: jogador.ehBot,
       });
     }
 

@@ -80,7 +80,7 @@ class SalaDeJogo {
     this.bordaArena = 0;
 
     /** @type {number} Borda final apos todos os encolhimentos */
-    this.bordaFinal = 5;
+    this.bordaFinal = 8;
 
     /** @type {number} Total de encolhimentos para a duracao configurada */
     this.totalEncolhimentos = 0;

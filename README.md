@@ -44,27 +44,34 @@ Um jogo snake moderno e voraz, jogavel no navegador, com **modo solo** e **multi
 
 ### Modo Solo
 - 🍎 Comidas especiais com efeitos unicos (velocidade, vida extra, escudo, etc.)
+- 📈 Niveis progressivos: o jogo acelera conforme voce pontua (nivel 1 a 9)
 - ❤️ Sistema de vidas (3 vidas iniciais)
-- 🏆 Recordes salvos localmente no navegador (top 10)
+- 🏆 Recordes salvos localmente no navegador (top 10) e exibidos no game over
 - ⚡ Efeitos temporarios (boost de velocidade, escudo protetor)
+- 🛡️ Escudo deflete a cobra para uma direcao segura ao bater
 - ✨ Efeitos visuais com particulas ao coletar comida
-- ⏸ Pausa com ESC ou P
+- ⏸ Pausa com ESC ou P — e pausa automatica ao trocar de aba
 
 ### Modo Multiplayer
 - 👥 Ate 6 jogadores simultaneos na mesma rede
 - 🎨 Cada jogador com cor unica e nickname
+- 🕒 Contagem regressiva 3-2-1 antes da partida comecar
 - 👑 Coroa rotativa no jogador com a maior cobra (o "rei")
 - 💥 Sistema de colisao especial entre cobras
+- 🍖 Cobras eliminadas dropam comida onde morreram
 - 🛡️ Comidas especiais compartilhadas (velocidade, escudo, vida extra)
-- 📊 Placar em tempo real na lateral da tela
-- 💬 Feed de eventos (eliminacoes, mortes, respawns)
-- ⏱️ Partidas com tempo limitado
+- 📊 Placar em tempo real na lateral da tela (voce em destaque)
+- 💬 Feed de eventos (eliminacoes, mortes, respawns, saidas)
+- ⏱️ Partidas com tempo limitado e arena que encolhe
 - 🏆 Ranking final com medalhas
+- 🔄 Revanche na mesma sala com os mesmos jogadores
 - 🤖 Bots com niveis de dificuldade para preencher a arena
 
 ### Visual e UX
 - 🌙 Tema escuro moderno com efeitos neon
+- 🌊 Movimento suave: as cobras deslizam entre as celulas (interpolacao visual)
 - 🎆 Sistema de particulas para feedback visual
+- 🔊 Efeitos sonoros procedurais estilo 8-bit (Web Audio, sem arquivos)
 - 🐍 Cobras com gradiente, olhos e brilho
 - 📱 Suporte a dispositivos mobile (touch e swipe)
 - 🎨 Interface com glassmorphism e animacoes CSS
@@ -191,6 +198,7 @@ PORTA=8080 npm start
    - Ataque outras cobras com a cabeca para roubar seus segmentos
    - A maior cobra recebe uma **coroa dourada** 👑
 8. Ao final, descubra quem e a cobra mais voraz no ranking!
+9. Quer revanche? Clique em **"Revanche na Mesma Sala"** — todos continuam juntos, basta marcar "pronto" de novo
 
 #### Como conectar amigos na mesma rede
 
@@ -255,6 +263,8 @@ Quando duas cabecas colidem diretamente:
 - O **escudo** (comida ciano) protege contra colisoes com outras cobras por 4 segundos
 - Se uma cobra **com escudo** for atacada, o **atacante** morre em vez do alvo (refletido!)
 - Apos perder uma vida e renascer, o jogador ganha **3 segundos de invulnerabilidade** (cobra pisca)
+- A invulnerabilidade protege **apenas contra outras cobras** — paredes continuam letais!
+- No modo solo, o escudo tambem protege de paredes e do proprio corpo, **defletindo** a cobra para uma direcao segura
 
 ### Condicoes de Vitoria
 
@@ -316,17 +326,21 @@ snakis/
 ├── README.md                 # Este arquivo
 ├── servidor.js               # Servidor Express + Socket.IO
 ├── jogo/
-│   └── SalaDeJogo.js         # Logica de uma sala multiplayer (servidor)
+│   ├── SalaDeJogo.js         # Logica de uma sala multiplayer (servidor)
+│   └── BotIA.js              # Inteligencia artificial dos bots (BFS, flood fill)
 └── publico/                  # Arquivos estaticos servidos ao navegador
     ├── index.html            # Menu principal
     ├── solo.html             # Pagina do modo solo
     ├── multijogador.html     # Pagina do modo multiplayer
+    ├── favicon.svg           # Icone do jogo
     ├── css/
     │   └── estilos.css       # Estilos globais (tema escuro, glassmorphism)
     └── js/
         ├── constantes.js     # Constantes compartilhadas (servidor + cliente)
+        ├── Mobile.js         # Suporte a dispositivos moveis (swipe, haptics)
         ├── Renderizador.js   # Motor de renderizacao Canvas (cobras, comida, coroa)
         ├── SistemaDeParticulas.js  # Efeitos visuais com particulas
+        ├── SistemaDeSom.js   # Efeitos sonoros procedurais 8-bit (Web Audio)
         ├── JogoSolo.js       # Logica completa do modo solo
         └── ClienteMultijogador.js  # Cliente WebSocket do modo multiplayer
 ```
@@ -340,7 +354,8 @@ snakis/
 Edite o arquivo `publico/js/constantes.js` para ajustar:
 
 - **Tamanho do grid**: `TABULEIRO.LARGURA_SOLO`, `TABULEIRO.ALTURA_SOLO`, etc.
-- **Velocidade da cobra**: `COBRA.VELOCIDADE_BASE` (maior = mais lento)
+- **Velocidade da cobra (multi)**: `COBRA.VELOCIDADE_BASE` (maior = mais lento)
+- **Velocidade e progressao (solo)**: `SOLO.VELOCIDADE_INICIAL`, `SOLO.VELOCIDADE_MINIMA` e `SOLO.PONTOS_POR_NIVEL`
 - **Vidas iniciais**: `COBRA.VIDAS_INICIAIS`
 - **Quantidade de comida**: `SOLO.QUANTIDADE_COMIDA`, `MULTI.QUANTIDADE_COMIDA`
 - **Duracao da partida multiplayer**: `MULTI.TEMPO_PARTIDA` (em segundos)

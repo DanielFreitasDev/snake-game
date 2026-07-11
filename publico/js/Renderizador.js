@@ -549,6 +549,40 @@ class Renderizador {
   }
 
   /**
+   * Desenha a contagem regressiva central antes da partida comecar.
+   * @param {number} numero - Segundos restantes (3, 2, 1).
+   */
+  desenharContagem(numero) {
+    const ctx = this.ctx;
+    const w = this.largura;
+    const h = this.altura;
+
+    // Overlay escuro suave
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.save();
+
+    // Numero gigante pulsando
+    const pulso = 1 + Math.sin(this.tickAnimacao * 0.25) * 0.06;
+    ctx.font = `bold ${Math.floor(90 * pulso)}px "Orbitron", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#00ff88';
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = '#00ff88';
+    ctx.fillText(String(numero), w / 2, h / 2);
+
+    // Texto de apoio
+    ctx.font = 'bold 20px "Orbitron", sans-serif';
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('Prepare-se!', w / 2, h / 2 - 80);
+
+    ctx.restore();
+  }
+
+  /**
    * Desenha o aviso central pulsante "ARENA ENCOLHENDO!" durante a pausa.
    */
   desenharAvisoEncolhimento() {

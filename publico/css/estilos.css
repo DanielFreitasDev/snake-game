@@ -506,6 +506,13 @@ button {
   box-shadow: 0 0 8px currentColor;
 }
 
+.legenda-emoji {
+  font-size: 1rem;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
 /* Rodape */
 .rodape-menu {
   text-align: center;
@@ -1836,4 +1843,59 @@ button {
   .botao-pausar-mobile {
     top: 4px;
   }
+}
+
+/* =========================================================================
+   9. NOVOS COMPONENTES (nivel, recordes no game over, destaque no placar)
+   ======================================================================= */
+
+/* Nivel atual no HUD do modo solo */
+.hud-nivel {
+  color: #00ccff;
+}
+
+/* Top 5 de recordes exibido na tela de game over do solo */
+.recordes-gameover {
+  margin: 16px 0 4px;
+  text-align: left;
+}
+
+.recordes-gameover-titulo {
+  font-family: var(--fonte-titulo);
+  font-size: 0.85rem;
+  color: var(--cor-texto-secundario);
+  text-align: center;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.recorde-linha-mini {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 14px;
+  border-radius: var(--raio-borda-sm);
+  font-size: 0.85rem;
+  color: var(--cor-texto-secundario);
+}
+
+.recorde-linha-mini span:last-child {
+  font-family: var(--fonte-titulo);
+  font-size: 0.8rem;
+  color: var(--cor-texto);
+}
+
+.recorde-linha-mini.recorde-atual {
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.35);
+}
+
+.recorde-linha-mini.recorde-atual span:last-child {
+  color: var(--cor-primaria);
+}
+
+/* Destaque do jogador local no placar lateral do multiplayer */
+.placar-jogador.eu {
+  border-color: rgba(0, 255, 136, 0.5);
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.15);
 }

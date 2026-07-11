@@ -18,6 +18,22 @@
  * @class ClienteMultijogador
  */
 
+/**
+ * Escapa caracteres especiais de HTML em textos vindos de outros usuarios
+ * (apelidos), impedindo injecao de markup/scripts no placar e ranking.
+ * @param {*} texto - Texto bruto.
+ * @returns {string} Texto seguro para innerHTML.
+ */
+function escaparHtml(texto) {
+  return String(texto).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[c]));
+}
+
 class ClienteMultijogador {
   /**
    * Inicializa o cliente multiplayer e conecta ao servidor.
@@ -68,6 +84,7 @@ class ClienteMultijogador {
     // Resultado
     this.elRankingFinal = document.getElementById('ranking-final');
     this.elBotaoJogarNovamente = document.getElementById('botao-jogar-novamente');
+    this.elBotaoSairLobby = document.getElementById('botao-sair-lobby');
 
     /* -----------------------------------------------------------------------
      * ESTADO DO CLIENTE
@@ -96,6 +113,15 @@ class ClienteMultijogador {
 
     /** @type {number|null} requestAnimationFrame ID */
     this.frameAnimacao = null;
+
+    /** @type {Map<string, object>} Interpolacao de movimento por jogador */
+    this.movimentosVisuais = new Map();
+
+    /** @type {number} Ultimo numero anunciado da contagem regressiva */
+    this.ultimaContagem = 0;
+
+    /** @type {string} Cache do HTML do placar (evita innerHTML redundante) */
+    this.placarHtmlCache = '';
 
     /* -----------------------------------------------------------------------
      * CONEXAO SOCKET.IO
@@ -154,10 +180,15 @@ class ClienteMultijogador {
      * Evento: estado-jogo
      * Recebido a cada tick do servidor com o estado completo do jogo.
      * Este eh o evento mais frequente e critico para o desempenho.
+     * O HUD eh atualizado aqui (20x/s) e nao no loop de renderizacao
+     * (60x/s) — innerHTML a cada frame gastaria CPU sem necessidade.
      */
     this.socket.on('estado-jogo', (estado) => {
       this.ultimoEstado = estado;
+      this._rastrearMovimentos(estado);
       this._processarEventos(estado.eventos);
+      this._processarContagem(estado.contagem || 0);
+      this._atualizarHUDMulti(estado);
     });
 
     /**
@@ -365,7 +396,7 @@ class ClienteMultijogador {
       html += `
         <div class="jogador-item">
           <span class="jogador-cor" style="background: ${jogador.cor.principal}; box-shadow: 0 0 8px ${jogador.cor.principal};"></span>
-          <span class="jogador-nome">${jogador.apelido}${indicadorBot}${indicadorEu}</span>
+          <span class="jogador-nome">${escaparHtml(jogador.apelido)}${indicadorBot}${indicadorEu}</span>
           <span class="jogador-status ${statusClasse}">${statusTexto}</span>
         </div>
       `;
@@ -423,6 +454,12 @@ class ClienteMultijogador {
   _iniciarTelaJogo() {
     this._mostrarTela('jogo');
 
+    // Resetar estado visual da partida anterior
+    this.ultimoEstado = null;
+    this.movimentosVisuais.clear();
+    this.ultimaContagem = 0;
+    this.placarHtmlCache = '';
+
     // Mobile: fullscreen e bloqueio de gestos
     Mobile.entrarFullscreen();
     Mobile.bloquearGestos();
@@ -467,12 +504,14 @@ class ClienteMultijogador {
       rend.desenharComida(comida.posicao, comida.tipo, comida.cor, comida.brilho);
     }
 
-    // Desenhar todas as cobras
+    // Desenhar todas as cobras (com movimento interpolado)
     for (const jogador of estado.jogadores) {
       if (!jogador.vivo || jogador.cobra.length === 0) continue;
 
+      const cobraVisual = this._cobraVisualDe(jogador);
+
       rend.desenharCobra(
-        jogador.cobra,
+        cobraVisual,
         jogador.cor.principal,
         jogador.cor.secundaria,
         jogador.direcao,
@@ -486,8 +525,8 @@ class ClienteMultijogador {
       );
 
       // Trilha de velocidade
-      if (jogador.efeitos.velocidade && jogador.cobra.length > 0) {
-        const cauda = jogador.cobra[jogador.cobra.length - 1];
+      if (jogador.efeitos.velocidade && cobraVisual.length > 0) {
+        const cauda = cobraVisual[cobraVisual.length - 1];
         const tam = rend.tamanhoCelula;
         this.particulas.criarTrilha(
           cauda.x * tam + tam / 2,
@@ -506,8 +545,131 @@ class ClienteMultijogador {
       rend.desenharAvisoEncolhimento();
     }
 
-    // Atualizar HUD
-    this._atualizarHUDMulti(estado);
+    // Contagem regressiva pre-partida
+    if (estado.contagem > 0) {
+      rend.desenharContagem(estado.contagem);
+    }
+  }
+
+  /* =========================================================================
+   * INTERPOLACAO DE MOVIMENTO (SUAVIZACAO VISUAL)
+   * ======================================================================= */
+
+  /**
+   * Registra as mudancas de posicao de cada cobra entre estados recebidos.
+   * A duracao de cada movimento eh medida na pratica (tempo entre mudancas
+   * de cabeca), entao boosts de velocidade sao acompanhados automaticamente.
+   * @param {object} estado - Estado recebido do servidor.
+   * @private
+   */
+  _rastrearMovimentos(estado) {
+    const agora = performance.now();
+    const idsVivos = new Set();
+
+    for (const jogador of estado.jogadores) {
+      if (!jogador.vivo || jogador.cobra.length === 0) continue;
+      idsVivos.add(jogador.id);
+
+      const cabeca = jogador.cobra[0];
+      const cauda = jogador.cobra[jogador.cobra.length - 1];
+      const registro = this.movimentosVisuais.get(jogador.id);
+
+      if (!registro) {
+        this.movimentosVisuais.set(jogador.id, {
+          cabecaAtual: { x: cabeca.x, y: cabeca.y },
+          caudaAtual: { x: cauda.x, y: cauda.y },
+          tamanhoAtual: jogador.cobra.length,
+          cabecaDe: null,
+          caudaDe: null,
+          cresceu: false,
+          inicio: agora,
+          duracao: 200,
+        });
+        continue;
+      }
+
+      const moveu = registro.cabecaAtual.x !== cabeca.x ||
+                    registro.cabecaAtual.y !== cabeca.y;
+      if (!moveu) continue;
+
+      const distancia = Math.abs(registro.cabecaAtual.x - cabeca.x) +
+                        Math.abs(registro.cabecaAtual.y - cabeca.y);
+
+      if (distancia === 1) {
+        // Movimento normal de 1 celula: interpolar a partir da posicao antiga
+        registro.cabecaDe = registro.cabecaAtual;
+        registro.caudaDe = registro.caudaAtual;
+        registro.cresceu = jogador.cobra.length > registro.tamanhoAtual;
+        registro.duracao = Math.min(350, Math.max(60, agora - registro.inicio));
+      } else {
+        // Teleporte (respawn/encolhimento): sem interpolacao
+        registro.cabecaDe = null;
+        registro.caudaDe = null;
+      }
+
+      registro.inicio = agora;
+      registro.cabecaAtual = { x: cabeca.x, y: cabeca.y };
+      registro.caudaAtual = { x: cauda.x, y: cauda.y };
+      registro.tamanhoAtual = jogador.cobra.length;
+    }
+
+    // Limpar registros de jogadores mortos/removidos
+    for (const id of this.movimentosVisuais.keys()) {
+      if (!idsVivos.has(id)) this.movimentosVisuais.delete(id);
+    }
+  }
+
+  /**
+   * Monta o array de segmentos interpolados de um jogador para desenhar.
+   * Cabeca desliza da celula anterior para a atual; a cauda desliza para
+   * fora da celula que desocupou (quando a cobra nao cresceu).
+   * @param {object} jogador - Dados do jogador no estado atual.
+   * @returns {Array<{x:number, y:number}>} Segmentos para desenhar.
+   * @private
+   */
+  _cobraVisualDe(jogador) {
+    const registro = this.movimentosVisuais.get(jogador.id);
+    if (!registro || !registro.cabecaDe) return jogador.cobra;
+
+    const t = Math.max(0, Math.min(1,
+      (performance.now() - registro.inicio) / registro.duracao));
+
+    const lerp = (de, para) => ({
+      x: de.x + (para.x - de.x) * t,
+      y: de.y + (para.y - de.y) * t,
+    });
+
+    const visual = [lerp(registro.cabecaDe, jogador.cobra[0]), ...jogador.cobra.slice(1)];
+
+    // Cauda deslizando (apenas em movimento normal, sem crescimento)
+    if (!registro.cresceu && registro.caudaDe) {
+      const caudaAtual = jogador.cobra[jogador.cobra.length - 1];
+      const adjacente = Math.abs(registro.caudaDe.x - caudaAtual.x) +
+                        Math.abs(registro.caudaDe.y - caudaAtual.y) === 1;
+      if (adjacente) {
+        visual.push(lerp(registro.caudaDe, caudaAtual));
+      }
+    }
+
+    return visual;
+  }
+
+  /**
+   * Anuncia a contagem regressiva com sons (3, 2, 1... VAI!).
+   * @param {number} contagem - Numero atual da contagem (0 = sem contagem).
+   * @private
+   */
+  _processarContagem(contagem) {
+    if (contagem === this.ultimaContagem) return;
+
+    if (contagem > 0) {
+      if (window.som) window.som.contagemTick();
+    } else if (this.ultimaContagem > 0) {
+      // Contagem chegou ao fim: partida valendo!
+      if (window.som) window.som.contagemVai();
+    }
+
+    this.ultimaContagem = contagem;
   }
 
   /**
@@ -551,23 +713,30 @@ class ClienteMultijogador {
       this.elMultiBarraEfeitos.innerHTML = efeitosHtml;
     }
 
-    // Placar lateral (ranking em tempo real)
-    const jogadoresOrdenados = [...estado.jogadores].sort((a, b) => b.pontuacao - a.pontuacao);
+    // Placar lateral (ranking em tempo real, desempate por eliminacoes)
+    const jogadoresOrdenados = [...estado.jogadores].sort((a, b) =>
+      (b.pontuacao - a.pontuacao) || (b.eliminacoes - a.eliminacoes));
     let placarHtml = '';
     for (const j of jogadoresOrdenados) {
       const coroa = j.ehRei ? '<span class="placar-jogador-coroa">👑</span>' : '';
-      const classeVivo = j.vivo ? '' : 'morto';
+      const classes = [j.vivo ? '' : 'morto', j.id === this.socket.id ? 'eu' : '']
+        .filter(Boolean).join(' ');
       const botTag = j.ehBot ? ' 🤖' : '';
       placarHtml += `
-        <div class="placar-jogador ${classeVivo}">
+        <div class="placar-jogador ${classes}">
           <span class="placar-jogador-cor" style="background: ${j.cor.principal};"></span>
           ${coroa}
-          <span class="placar-jogador-nome">${j.apelido}${botTag}</span>
+          <span class="placar-jogador-nome">${escaparHtml(j.apelido)}${botTag}</span>
           <span class="placar-jogador-pts">${j.pontuacao}</span>
         </div>
       `;
     }
-    this.elPlacarLateral.innerHTML = placarHtml;
+
+    // So mexer no DOM quando o placar realmente mudou
+    if (placarHtml !== this.placarHtmlCache) {
+      this.placarHtmlCache = placarHtml;
+      this.elPlacarLateral.innerHTML = placarHtml;
+    }
   }
 
   /**
@@ -638,9 +807,16 @@ class ClienteMultijogador {
           if (window.som) window.som.segmentoRemovido();
           break;
 
-        case 'respawn':
-          this._adicionarFeed(`✨ Jogador renasceu! (${evento.vidasRestantes} vidas)`);
+        case 'respawn': {
+          const quem = evento.apelido || 'Jogador';
+          const vidas = evento.vidasRestantes === 1 ? 'vida' : 'vidas';
+          this._adicionarFeed(`✨ ${quem} renasceu! (${evento.vidasRestantes} ${vidas})`);
           if (window.som && evento.jogadorId === this.socket.id) window.som.respawnar();
+          break;
+        }
+
+        case 'jogador_saiu':
+          this._adicionarFeed(`🚪 ${evento.apelido} saiu da partida`);
           break;
 
         case 'arena_encolhendo':
@@ -696,14 +872,15 @@ class ClienteMultijogador {
     for (const item of ranking) {
       const medalha = item.posicao === 1 ? '🥇' : item.posicao === 2 ? '🥈' : item.posicao === 3 ? '🥉' : `${item.posicao}`;
       const botTag = item.ehBot ? ' 🤖' : '';
+      const rotuloEliminacoes = item.eliminacoes === 1 ? 'eliminação' : 'eliminações';
 
       html += `
         <div class="ranking-item">
           <span class="ranking-posicao">${medalha}</span>
           <span class="ranking-cor" style="background: ${item.cor.principal}; box-shadow: 0 0 8px ${item.cor.principal};"></span>
           <div class="ranking-info">
-            <div class="ranking-nome">${item.apelido}${botTag}</div>
-            <div class="ranking-stats">${item.eliminacoes} eliminacoes</div>
+            <div class="ranking-nome">${escaparHtml(item.apelido)}${botTag}</div>
+            <div class="ranking-stats">${item.eliminacoes} ${rotuloEliminacoes}</div>
           </div>
           <span class="ranking-pontuacao">${item.pontuacao.toLocaleString('pt-BR')}</span>
         </div>
@@ -883,17 +1060,40 @@ class ClienteMultijogador {
       this._atualizarListaSalas();
     });
 
-    // Resultado: Jogar novamente
+    // Resultado: Jogar novamente (revanche na MESMA sala, com os mesmos jogadores)
     this.elBotaoJogarNovamente.addEventListener('click', () => {
-      this.socket.emit('sair-sala');
-      this.codigoSala = null;
-      this.estouPronto = false;
-      this.ultimoEstado = null;
-      this.elBotaoPronto.textContent = 'Estou Pronto!';
-      this.elBotaoPronto.classList.remove('pronto-ativo');
-      this._mostrarTela('lobby');
-      this._atualizarListaSalas();
+      this.socket.emit('voltar-sala', (resposta) => {
+        this.ultimoEstado = null;
+        this.estouPronto = false;
+        this.elBotaoPronto.textContent = 'Estou Pronto!';
+        this.elBotaoPronto.classList.remove('pronto-ativo');
+
+        if (resposta && resposta.sucesso) {
+          this._mostrarTela('sala');
+          this.elSalaCodigo.textContent = this.codigoSala;
+        } else {
+          // Sala nao existe mais (todos sairam): voltar ao lobby
+          this.codigoSala = null;
+          this._mostrarTela('lobby');
+          this._atualizarListaSalas();
+          this._exibirErro((resposta && resposta.erro) || 'A sala foi encerrada.');
+        }
+      });
     });
+
+    // Resultado: Sair para o lobby
+    if (this.elBotaoSairLobby) {
+      this.elBotaoSairLobby.addEventListener('click', () => {
+        this.socket.emit('sair-sala');
+        this.codigoSala = null;
+        this.estouPronto = false;
+        this.ultimoEstado = null;
+        this.elBotaoPronto.textContent = 'Estou Pronto!';
+        this.elBotaoPronto.classList.remove('pronto-ativo');
+        this._mostrarTela('lobby');
+        this._atualizarListaSalas();
+      });
+    }
   }
 }
 

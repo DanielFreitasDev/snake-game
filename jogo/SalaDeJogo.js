@@ -47,9 +47,6 @@ class SalaDeJogo {
     /** @type {number} Maximo de jogadores permitidos */
     this.maxJogadores = CONSTANTES.MULTI.MAX_JOGADORES;
 
-    /** @type {number} Indice para atribuir cores sequenciais */
-    this.indiceCorAtual = 0;
-
     /** @type {number} Contador sequencial para IDs de bots */
     this.contadorBots = 0;
 
@@ -73,6 +70,12 @@ class SalaDeJogo {
 
     /** @type {Array<object>} Fila de eventos para enviar aos clientes */
     this.eventosRecentes = [];
+
+    /** @type {Array<object>} Eventos gerados fora do tick (ex: jogador saiu) */
+    this.eventosPendentes = [];
+
+    /** @type {number} Ticks restantes da contagem regressiva pre-partida */
+    this.ticksContagem = 0;
 
     /* --- Encolhimento da arena --- */
 
@@ -100,18 +103,49 @@ class SalaDeJogo {
    * ======================================================================= */
 
   /**
+   * Escolhe a primeira cor que ainda nao esta em uso na sala.
+   * Evita repetir a cor de um jogador presente quando outros ja sairam.
+   * @returns {object} Cor { principal, secundaria, nome }.
+   * @private
+   */
+  _proximaCorLivre() {
+    const coresUsadas = new Set();
+    for (const jogador of this.jogadores.values()) {
+      coresUsadas.add(jogador.cor.principal);
+    }
+    for (const cor of CONSTANTES.CORES_COBRAS) {
+      if (!coresUsadas.has(cor.principal)) return cor;
+    }
+    return CONSTANTES.CORES_COBRAS[this.jogadores.size % CONSTANTES.CORES_COBRAS.length];
+  }
+
+  /**
+   * Normaliza um apelido vindo do cliente: garante string, remove
+   * caracteres de controle e limita o tamanho.
+   * @param {*} apelido - Valor bruto recebido do cliente.
+   * @returns {string} Apelido seguro e nao-vazio.
+   * @private
+   */
+  _sanitizarApelido(apelido) {
+    const texto = String(apelido == null ? '' : apelido)
+      .replace(/[\x00-\x1f\x7f]/g, '')
+      .trim()
+      .substring(0, 15);
+    return texto || 'Jogador';
+  }
+
+  /**
    * Adiciona um novo jogador a sala.
-   * Cada jogador recebe uma cor unica sequencial e seus dados iniciais.
+   * Cada jogador recebe uma cor unica e seus dados iniciais.
    * @param {string} socketId - ID do socket do jogador.
    * @param {string} apelido - Nickname escolhido pelo jogador.
    */
   adicionarJogador(socketId, apelido) {
-    const cor = CONSTANTES.CORES_COBRAS[this.indiceCorAtual % CONSTANTES.CORES_COBRAS.length];
-    this.indiceCorAtual++;
+    const cor = this._proximaCorLivre();
 
     this.jogadores.set(socketId, {
       id: socketId,
-      apelido: apelido.substring(0, 15), // Limitar tamanho do apelido
+      apelido: this._sanitizarApelido(apelido),
       cor,
       ehBot: false,
       pronto: false,
@@ -140,10 +174,18 @@ class SalaDeJogo {
    * @param {string} socketId - ID do socket do jogador a remover.
    */
   removerJogador(socketId) {
+    const jogador = this.jogadores.get(socketId);
     this.jogadores.delete(socketId);
 
-    // Se a partida esta em andamento, verificar se deve finalizar
+    // Se a partida esta em andamento, avisar os demais e verificar fim de jogo
     if (this.estado === 'jogando') {
+      if (jogador) {
+        this.eventosPendentes.push({
+          tipo: 'jogador_saiu',
+          apelido: jogador.apelido,
+        });
+      }
+
       const vivos = this._contarJogadoresVivos();
       if (vivos <= 1) {
         this.finalizarJogo();
@@ -180,8 +222,7 @@ class SalaDeJogo {
       return { sucesso: false, erro: 'A sala esta cheia.' };
     }
 
-    const cor = CONSTANTES.CORES_COBRAS[this.indiceCorAtual % CONSTANTES.CORES_COBRAS.length];
-    this.indiceCorAtual++;
+    const cor = this._proximaCorLivre();
     this.contadorBots++;
 
     const nomesUsados = [...this.jogadores.values()].map(j => j.apelido);
@@ -297,6 +338,10 @@ class SalaDeJogo {
     this.tickAtual = 0;
     this.tempoRestante = this.tempoPartida;
     this.eventosRecentes = [];
+    this.eventosPendentes = [];
+
+    // Contagem regressiva de 3 segundos antes das cobras se moverem
+    this.ticksContagem = 3 * CONSTANTES.MULTI.TICKS_POR_SEGUNDO;
 
     // Calcular encolhimentos de arena baseado no tempo
     const minutos = Math.floor(this.tempoPartida / 60);
@@ -331,6 +376,7 @@ class SalaDeJogo {
    * Finaliza a partida, para o loop e emite o resultado final.
    */
   finalizarJogo() {
+    if (this.estado === 'finalizado') return; // Evitar dupla finalizacao
     this.estado = 'finalizado';
 
     if (this.intervaloJogo) {
@@ -363,6 +409,38 @@ class SalaDeJogo {
     }
   }
 
+  /**
+   * Reabre a sala apos uma partida finalizada (revanche).
+   * Volta ao estado 'aguardando' preservando jogadores, bots e configuracoes.
+   * @returns {boolean} True se a sala foi reaberta.
+   */
+  reiniciarParaLobby() {
+    if (this.estado === 'jogando') return false;
+
+    // Outro jogador ja reabriu a sala: nao resetar o "pronto" de ninguem
+    if (this.estado === 'aguardando') return true;
+
+    this.parar();
+    this.estado = 'aguardando';
+    this.comidas = [];
+    this.eventosRecentes = [];
+    this.eventosPendentes = [];
+    this.bordaArena = 0;
+    this.encolhendo = false;
+    this.tempoRestante = this.tempoPartida;
+
+    for (const jogador of this.jogadores.values()) {
+      jogador.pronto = jogador.ehBot; // Bots continuam prontos; humanos reconfirmam
+      jogador.vivo = true;
+      jogador.cobra = [];
+      jogador.pontuacao = 0;
+      jogador.eliminacoes = 0;
+      jogador.vidas = CONSTANTES.COBRA.VIDAS_INICIAIS;
+    }
+
+    return true;
+  }
+
   /* =========================================================================
    * CONTROLE DE DIRECAO
    * ======================================================================= */
@@ -375,6 +453,12 @@ class SalaDeJogo {
    * @param {string} direcao - Nova direcao ('cima'|'baixo'|'esquerda'|'direita').
    */
   mudarDirecao(socketId, direcao) {
+    // Whitelist: ignorar qualquer payload que nao seja uma direcao valida.
+    // hasOwnProperty evita chaves herdadas ('__proto__', 'constructor') —
+    // sem isso, um cliente malicioso corromperia o estado no proximo tick.
+    if (typeof direcao !== 'string' ||
+        !Object.prototype.hasOwnProperty.call(CONSTANTES.DIRECOES, direcao)) return;
+
     const jogador = this.jogadores.get(socketId);
     if (!jogador || !jogador.vivo) return;
 
@@ -400,16 +484,45 @@ class SalaDeJogo {
    * ======================================================================= */
 
   /**
+   * Executa um tick do jogo protegido contra excecoes.
+   * Um erro inesperado em uma sala nao pode derrubar o processo inteiro
+   * (o setInterval transformaria a excecao em uncaughtException).
+   * @private
+   */
+  _loopDoJogo() {
+    try {
+      this._executarTick();
+    } catch (erro) {
+      console.error(`[Sala ${this.codigo}] Erro no game loop:`, erro);
+      try {
+        this.finalizarJogo();
+      } catch (erroFinal) {
+        this.parar(); // Ultimo recurso: ao menos parar o loop desta sala
+      }
+    }
+  }
+
+  /**
    * Executa um tick do jogo. Este eh o coracao do servidor de jogo.
    * Cada tick: processa inputs, move cobras, verifica colisoes,
    * atualiza efeitos, mantem comida, e emite o estado atualizado.
    * @private
    */
-  _loopDoJogo() {
-    this.tickAtual++;
-    this.eventosRecentes = [];
+  _executarTick() {
+    // Incorporar eventos gerados entre ticks (ex: jogador desconectou)
+    this.eventosRecentes = this.eventosPendentes;
+    this.eventosPendentes = [];
 
-    // 0. Se pausado para encolhimento da arena, apenas decrementar
+    // 0a. Contagem regressiva pre-partida: nada se move ainda
+    if (this.ticksContagem > 0) {
+      this.ticksContagem--;
+      this.io.to(this.codigo).emit('estado-jogo', this._obterEstadoJogo());
+      return;
+    }
+
+    this.tickAtual++;
+
+    // 0b. Se pausado para encolhimento da arena, apenas decrementar
     if (this.pausaEncolhimento > 0) {
       this.pausaEncolhimento--;
       if (this.pausaEncolhimento === 0) {
@@ -438,9 +551,11 @@ class SalaDeJogo {
     // 6. Verificar colisoes entre cobras (regra especial)
     this._verificarColisaoEntreCobras();
 
-    // 7. Reabastecer comida se necessario
+    // 7. Reabastecer comida se necessario.
+    // Se _gerarComida falhar (mapa lotado), interromper — um `while`
+    // aqui travaria o servidor num loop infinito.
     while (this.comidas.length < CONSTANTES.MULTI.QUANTIDADE_COMIDA) {
-      this._gerarComida();
+      if (!this._gerarComida()) break;
     }
 
     // 8. Atualizar tempo restante (1 segundo = TICKS_POR_SEGUNDO ticks)
@@ -797,12 +912,16 @@ class SalaDeJogo {
    * Processa a morte ou perda de vida de um jogador.
    * Se o jogador ainda tem vidas, ele renasce (respawn).
    * Caso contrario, eh eliminado definitivamente.
+   *
+   * A invulnerabilidade pos-respawn protege apenas contra outras cobras.
+   * Paredes continuam letais — sem isso, uma cobra invulneravel
+   * atravessaria a borda e continuaria "viva" fora da arena.
    * @param {object} jogador - Dados do jogador.
    * @param {string} causa - Motivo da morte para log/eventos.
    * @private
    */
   _processarMorte(jogador, causa) {
-    if (jogador.invulneravel) return;
+    if (jogador.invulneravel && causa !== 'parede') return;
 
     jogador.vidas--;
 
@@ -813,10 +932,12 @@ class SalaDeJogo {
       this.eventosRecentes.push({
         tipo: 'respawn',
         jogadorId: jogador.id,
+        apelido: jogador.apelido,
         vidasRestantes: jogador.vidas,
       });
     } else {
-      // Morte definitiva
+      // Morte definitiva: dropar comida onde estava o corpo
+      const corpoAnterior = jogador.cobra;
       jogador.vivo = false;
       jogador.cobra = [];
 
@@ -827,8 +948,7 @@ class SalaDeJogo {
         causa,
       });
 
-      // Dropar comida no local da morte
-      this._droparComidaMorte(jogador);
+      this._droparComidaMorte(corpoAnterior);
     }
   }
 
@@ -867,18 +987,40 @@ class SalaDeJogo {
   }
 
   /**
-   * Dropa algumas comidas normais na posicao onde o jogador morreu,
-   * adicionando mais dinamismo ao jogo.
-   * @param {object} jogador - Jogador que morreu (com cobra anterior).
+   * Dropa comidas normais ao longo do corpo do jogador que morreu,
+   * premiando quem chegar primeiro aos "restos" da cobra.
+   * @param {Array<{x:number, y:number}>} corpo - Segmentos da cobra no momento da morte.
    * @private
    */
-  _droparComidaMorte(jogador) {
-    // Limitar a quantidade de comida dropada
-    const maxDrop = 3;
+  _droparComidaMorte(corpo) {
+    if (!corpo || corpo.length === 0) return;
+
+    const maxDrop = Math.min(3, Math.ceil(corpo.length / 3));
+    const dadosTipo = CONSTANTES.TIPOS_COMIDA.NORMAL;
     let dropados = 0;
-    // Usar as ultimas posicoes conhecidas (se houver)
-    // Como a cobra ja foi limpa, nao podemos usar suas posicoes.
-    // Dropar na area central como alternativa.
+
+    // Percorrer o corpo em intervalos regulares para espalhar as comidas
+    const passo = Math.max(1, Math.floor(corpo.length / maxDrop));
+    for (let i = 0; i < corpo.length && dropados < maxDrop; i += passo) {
+      const pos = corpo[i];
+
+      // So dropar dentro da arena ativa e em celula livre
+      const dentroArena =
+        pos.x >= this.bordaArena && pos.x < this.largura - this.bordaArena &&
+        pos.y >= this.bordaArena && pos.y < this.altura - this.bordaArena;
+      if (!dentroArena || this._posicaoOcupada(pos.x, pos.y)) continue;
+
+      this.comidas.push({
+        tipo: dadosTipo.tipo,
+        posicao: { x: pos.x, y: pos.y },
+        pontos: dadosTipo.pontos,
+        cor: dadosTipo.cor,
+        brilho: dadosTipo.brilho,
+        descricao: dadosTipo.descricao,
+        criadoEm: this.tickAtual,
+      });
+      dropados++;
+    }
   }
 
   /* =========================================================================
@@ -889,11 +1031,12 @@ class SalaDeJogo {
    * Gera uma nova comida aleatoria em uma posicao livre do mapa.
    * O tipo da comida eh sorteado com base nas probabilidades definidas
    * nas constantes (sistema de roleta ponderada).
+   * @returns {boolean} True se a comida foi criada.
    * @private
    */
   _gerarComida() {
     const posicao = this._encontrarPosicaoLivre();
-    if (!posicao) return; // Mapa completamente cheio (improvavel)
+    if (!posicao) return false; // Mapa completamente cheio (improvavel)
 
     // Sortear tipo de comida usando probabilidades ponderadas
     const tipoSorteado = this._sortearTipoComida();
@@ -908,6 +1051,7 @@ class SalaDeJogo {
       descricao: dadosTipo.descricao,
       criadoEm: this.tickAtual,
     });
+    return true;
   }
 
   /**
@@ -1175,6 +1319,9 @@ class SalaDeJogo {
       tick: this.tickAtual,
       bordaArena: this.bordaArena,
       encolhendo: this.encolhendo,
+      contagem: this.ticksContagem > 0
+        ? Math.ceil(this.ticksContagem / CONSTANTES.MULTI.TICKS_POR_SEGUNDO)
+        : 0,
     };
   }
 

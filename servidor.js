@@ -88,6 +88,34 @@ function obterIpLocal() {
   return 'localhost';
 }
 
+/**
+ * Garante que o callback de um evento seja sempre uma funcao chamavel.
+ * Clientes maliciosos podem omitir o callback ou enviar outro tipo —
+ * chamar algo que nao eh funcao derrubaria o handler.
+ * @param {*} callback - Valor recebido do cliente.
+ * @returns {Function} Callback seguro.
+ */
+function callbackSeguro(callback) {
+  return typeof callback === 'function' ? callback : () => {};
+}
+
+/**
+ * Envolve um handler de evento em try/catch para que nenhuma excecao
+ * (payload inesperado, bug interno) derrube o processo do servidor.
+ * @param {string} nome - Nome do evento (para log).
+ * @param {Function} handler - Handler original.
+ * @returns {Function} Handler protegido.
+ */
+function handlerSeguro(nome, handler) {
+  return (...args) => {
+    try {
+      handler(...args);
+    } catch (erro) {
+      console.error(`[Erro] Evento "${nome}" falhou:`, erro.message);
+    }
+  };
+}
+
 /* =========================================================================
  * EVENTOS DO SOCKET.IO
  * Cada evento corresponde a uma acao do cliente. O servidor valida
@@ -97,6 +125,9 @@ function obterIpLocal() {
 io.on('connection', (socket) => {
   console.log(`[Conexao] Jogador conectado: ${socket.id}`);
 
+  /** Registra um evento com protecao automatica contra excecoes */
+  const registrar = (nome, handler) => socket.on(nome, handlerSeguro(nome, handler));
+
   /* -----------------------------------------------------------------------
    * LOBBY: Listar, criar e entrar em salas
    * --------------------------------------------------------------------- */
@@ -105,7 +136,8 @@ io.on('connection', (socket) => {
    * Retorna a lista de salas disponiveis para o lobby do multiplayer.
    * Filtra apenas salas que ainda estao aguardando jogadores.
    */
-  socket.on('listar-salas', (callback) => {
+  registrar('listar-salas', (callback) => {
+    const responder = callbackSeguro(callback);
     const listaSalas = [];
     for (const [codigo, sala] of salas) {
       if (sala.estado === 'aguardando') {
@@ -117,14 +149,17 @@ io.on('connection', (socket) => {
         });
       }
     }
-    callback(listaSalas);
+    responder(listaSalas);
   });
 
   /**
    * Cria uma nova sala de jogo e adiciona o jogador como primeiro participante.
    * Retorna o codigo da sala criada para que outros possam entrar.
    */
-  socket.on('criar-sala', ({ apelido }, callback) => {
+  registrar('criar-sala', (dados, callback) => {
+    const responder = callbackSeguro(callback);
+    const apelido = dados && dados.apelido;
+
     // Se ja esta em uma sala, sair primeiro
     _sairDaSalaAtual(socket);
 
@@ -138,7 +173,7 @@ io.on('connection', (socket) => {
     jogadorParaSala.set(socket.id, codigo);
 
     console.log(`[Sala] "${apelido}" criou a sala ${codigo}`);
-    callback({ sucesso: true, codigo });
+    responder({ sucesso: true, codigo });
 
     // Notificar todos os participantes da sala sobre a atualizacao
     io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
@@ -148,24 +183,33 @@ io.on('connection', (socket) => {
    * Adiciona o jogador a uma sala existente identificada pelo codigo.
    * Valida se a sala existe, esta aberta e tem vagas.
    */
-  socket.on('entrar-sala', ({ codigo, apelido }, callback) => {
+  registrar('entrar-sala', (dados, callback) => {
+    const responder = callbackSeguro(callback);
+    const codigo = dados && dados.codigo;
+    const apelido = dados && dados.apelido;
+
+    if (typeof codigo !== 'string') {
+      responder({ sucesso: false, erro: 'Código inválido.' });
+      return;
+    }
+
     _sairDaSalaAtual(socket);
 
     const codigoNormalizado = codigo.toUpperCase().trim();
     const sala = salas.get(codigoNormalizado);
 
     if (!sala) {
-      callback({ sucesso: false, erro: 'Sala nao encontrada.' });
+      responder({ sucesso: false, erro: 'Sala não encontrada.' });
       return;
     }
 
     if (sala.estado !== 'aguardando') {
-      callback({ sucesso: false, erro: 'A partida ja esta em andamento.' });
+      responder({ sucesso: false, erro: 'A partida já está em andamento.' });
       return;
     }
 
     if (sala.obterQuantidadeJogadores() >= sala.maxJogadores) {
-      callback({ sucesso: false, erro: 'A sala esta cheia.' });
+      responder({ sucesso: false, erro: 'A sala está cheia.' });
       return;
     }
 
@@ -174,7 +218,7 @@ io.on('connection', (socket) => {
     jogadorParaSala.set(socket.id, codigoNormalizado);
 
     console.log(`[Sala] "${apelido}" entrou na sala ${codigoNormalizado}`);
-    callback({ sucesso: true, codigo: codigoNormalizado });
+    responder({ sucesso: true, codigo: codigoNormalizado });
 
     io.to(codigoNormalizado).emit('sala-atualizada', sala.obterInfoSala());
   });
@@ -187,7 +231,7 @@ io.on('connection', (socket) => {
    * Alterna o estado de "pronto" do jogador na sala.
    * Quando todos estiverem prontos, o jogo pode ser iniciado.
    */
-  socket.on('jogador-pronto', () => {
+  registrar('jogador-pronto', () => {
     const codigo = jogadorParaSala.get(socket.id);
     if (!codigo) return;
 
@@ -202,7 +246,7 @@ io.on('connection', (socket) => {
    * Inicia a partida se todas as condicoes forem atendidas.
    * Qualquer jogador pode solicitar o inicio.
    */
-  socket.on('iniciar-partida', () => {
+  registrar('iniciar-partida', () => {
     const codigo = jogadorParaSala.get(socket.id);
     if (!codigo) return;
 
@@ -224,7 +268,7 @@ io.on('connection', (socket) => {
    * Recebe a mudanca de direcao de um jogador e encaminha para a sala.
    * A validacao da direcao (anti-180°) eh feita na SalaDeJogo.
    */
-  socket.on('mudar-direcao', (direcao) => {
+  registrar('mudar-direcao', (direcao) => {
     const codigo = jogadorParaSala.get(socket.id);
     if (!codigo) return;
 
@@ -241,19 +285,20 @@ io.on('connection', (socket) => {
   /**
    * Adiciona um bot a sala do jogador.
    */
-  socket.on('adicionar-bot', (callback) => {
+  registrar('adicionar-bot', (callback) => {
+    const responder = callbackSeguro(callback);
     const codigo = jogadorParaSala.get(socket.id);
-    if (!codigo) return callback({ sucesso: false, erro: 'Voce nao esta em uma sala.' });
+    if (!codigo) return responder({ sucesso: false, erro: 'Você não está em uma sala.' });
 
     const sala = salas.get(codigo);
-    if (!sala) return callback({ sucesso: false, erro: 'Sala nao encontrada.' });
+    if (!sala) return responder({ sucesso: false, erro: 'Sala não encontrada.' });
 
     if (sala.estado !== 'aguardando') {
-      return callback({ sucesso: false, erro: 'A partida ja esta em andamento.' });
+      return responder({ sucesso: false, erro: 'A partida já está em andamento.' });
     }
 
     const resultado = sala.adicionarBot();
-    callback(resultado);
+    responder(resultado);
 
     if (resultado.sucesso) {
       io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
@@ -263,19 +308,20 @@ io.on('connection', (socket) => {
   /**
    * Remove o ultimo bot da sala do jogador.
    */
-  socket.on('remover-bot', (callback) => {
+  registrar('remover-bot', (callback) => {
+    const responder = callbackSeguro(callback);
     const codigo = jogadorParaSala.get(socket.id);
-    if (!codigo) return callback({ sucesso: false, erro: 'Voce nao esta em uma sala.' });
+    if (!codigo) return responder({ sucesso: false, erro: 'Você não está em uma sala.' });
 
     const sala = salas.get(codigo);
-    if (!sala) return callback({ sucesso: false, erro: 'Sala nao encontrada.' });
+    if (!sala) return responder({ sucesso: false, erro: 'Sala não encontrada.' });
 
     if (sala.estado !== 'aguardando') {
-      return callback({ sucesso: false, erro: 'A partida ja esta em andamento.' });
+      return responder({ sucesso: false, erro: 'A partida já está em andamento.' });
     }
 
     const resultado = sala.removerBot();
-    callback(resultado);
+    responder(resultado);
 
     if (resultado.sucesso) {
       io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
@@ -285,30 +331,52 @@ io.on('connection', (socket) => {
   /**
    * Altera o tempo da partida.
    */
-  socket.on('alterar-tempo-partida', (segundos, callback) => {
+  registrar('alterar-tempo-partida', (segundos, callback) => {
+    const responder = callbackSeguro(callback);
     const codigo = jogadorParaSala.get(socket.id);
-    if (!codigo) return callback({ sucesso: false });
+    if (!codigo) return responder({ sucesso: false });
 
     const sala = salas.get(codigo);
-    if (!sala || sala.estado !== 'aguardando') return callback({ sucesso: false });
+    if (!sala || sala.estado !== 'aguardando') return responder({ sucesso: false });
 
     sala.alterarTempoPartida(segundos);
-    callback({ sucesso: true });
+    responder({ sucesso: true });
     io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
   });
 
   /**
    * Altera a dificuldade dos bots na sala.
    */
-  socket.on('alterar-dificuldade-bots', (nivel, callback) => {
+  registrar('alterar-dificuldade-bots', (nivel, callback) => {
+    const responder = callbackSeguro(callback);
     const codigo = jogadorParaSala.get(socket.id);
-    if (!codigo) return callback({ sucesso: false });
+    if (!codigo) return responder({ sucesso: false });
 
     const sala = salas.get(codigo);
-    if (!sala || sala.estado !== 'aguardando') return callback({ sucesso: false });
+    if (!sala || sala.estado !== 'aguardando') return responder({ sucesso: false });
 
     sala.alterarDificuldadeBots(nivel);
-    callback({ sucesso: true });
+    responder({ sucesso: true });
+    io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
+  });
+
+  /**
+   * Revanche: reabre a sala finalizada para uma nova partida,
+   * mantendo jogadores, bots e configurações.
+   */
+  registrar('voltar-sala', (callback) => {
+    const responder = callbackSeguro(callback);
+    const codigo = jogadorParaSala.get(socket.id);
+    if (!codigo) return responder({ sucesso: false, erro: 'Você não está em uma sala.' });
+
+    const sala = salas.get(codigo);
+    if (!sala) return responder({ sucesso: false, erro: 'Sala não encontrada.' });
+
+    if (!sala.reiniciarParaLobby()) {
+      return responder({ sucesso: false, erro: 'A partida ainda está em andamento.' });
+    }
+
+    responder({ sucesso: true, codigo });
     io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
   });
 
@@ -319,7 +387,7 @@ io.on('connection', (socket) => {
   /**
    * Jogador solicita sair da sala voluntariamente.
    */
-  socket.on('sair-sala', () => {
+  registrar('sair-sala', () => {
     _sairDaSalaAtual(socket);
   });
 
@@ -330,7 +398,7 @@ io.on('connection', (socket) => {
   /**
    * Limpa os dados do jogador ao desconectar (fechar aba, perder conexao).
    */
-  socket.on('disconnect', () => {
+  registrar('disconnect', () => {
     console.log(`[Conexao] Jogador desconectado: ${socket.id}`);
     _sairDaSalaAtual(socket);
   });

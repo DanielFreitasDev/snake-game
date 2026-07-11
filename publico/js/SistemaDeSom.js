@@ -305,6 +305,30 @@ class SistemaDeSom {
     ]);
   }
 
+  /**
+   * Som de subir de nivel no modo solo: dois blips ascendentes rapidos.
+   */
+  nivelSubiu() {
+    this._tocarSequencia([
+      { freq: 880, tipo: 'square', duracao: 0.08, atraso: 0, vol: this.volume * 0.4 },
+      { freq: 1175, tipo: 'square', duracao: 0.14, atraso: 0.08, vol: this.volume * 0.5 },
+    ]);
+  }
+
+  /**
+   * Tick da contagem regressiva pre-partida (3, 2, 1).
+   */
+  contagemTick() {
+    this._tocarTom(440, 'square', 0.1, undefined, this.volume * 0.4);
+  }
+
+  /**
+   * Som de "VAI!" ao fim da contagem regressiva.
+   */
+  contagemVai() {
+    this._tocarTom(880, 'square', 0.25, 1175, this.volume * 0.5);
+  }
+
   // ---- Multiplayer ----
 
   /**

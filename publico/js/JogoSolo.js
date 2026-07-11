@@ -34,6 +34,8 @@ class JogoSolo {
     this.elNovoRecorde = document.getElementById('novo-recorde');
     this.elTempoJogo = document.getElementById('tempo-jogo');
     this.elTempoFinal = document.getElementById('tempo-final');
+    this.elNivel = document.getElementById('nivel');
+    this.elRecordesGameover = document.getElementById('recordes-gameover');
 
     // Configuracoes do grid
     this.larguraGrid = CONSTANTES.TABULEIRO.LARGURA_SOLO;
@@ -67,9 +69,14 @@ class JogoSolo {
       escudo: { ativo: false, tempoRestante: 0 },
     };
 
-    // Controle de velocidade
-    this.velocidadeAtual = CONSTANTES.COBRA.VELOCIDADE_BASE;
+    // Controle de velocidade e progressao de nivel
+    this.nivel = 1;
+    this.velocidadeBase = CONSTANTES.SOLO.VELOCIDADE_INICIAL;
+    this.velocidadeAtual = this.velocidadeBase;
     this.contadorMovimento = 0;
+
+    // Ultimo movimento da cobra (para interpolacao visual suave)
+    this.movimentoVisual = null;
 
     // Referencia aos intervals/animation frames
     this.intervaloJogo = null;
@@ -110,7 +117,10 @@ class JogoSolo {
     this.invulneravel = false;
     this.tempoInvulneravel = 0;
     this.contadorMovimento = 0;
-    this.velocidadeAtual = CONSTANTES.COBRA.VELOCIDADE_BASE;
+    this.nivel = 1;
+    this.velocidadeBase = CONSTANTES.SOLO.VELOCIDADE_INICIAL;
+    this.velocidadeAtual = this.velocidadeBase;
+    this.movimentoVisual = null;
     this.efeitos = {
       velocidade: { ativo: false, tempoRestante: 0 },
       escudo: { ativo: false, tempoRestante: 0 },
@@ -209,6 +219,7 @@ class JogoSolo {
     this.elPontuacaoFinal.textContent = this.pontuacao.toLocaleString('pt-BR');
     this.elTempoFinal.textContent = this._formatarTempo(this.tempoJogado);
     this.elNovoRecorde.style.display = novoRecorde ? 'block' : 'none';
+    this._renderizarRecordesGameover();
     this.elTelaGameover.style.display = 'flex';
 
     // Explosao dramatica de particulas
@@ -272,6 +283,11 @@ class JogoSolo {
       }
     }
 
+    // Registrar posicoes antigas para interpolacao visual (cabeca e cauda)
+    const cabecaAntiga = { x: cabecaAtual.x, y: cabecaAtual.y };
+    const caudaAntiga = this.cobra[this.cobra.length - 1];
+    const vaiCrescer = this.crescimento > 0;
+
     // Mover: adicionar nova cabeca
     this.cobra.unshift(novaCabeca);
 
@@ -282,12 +298,23 @@ class JogoSolo {
       this.cobra.pop();
     }
 
+    // Dados do movimento para o renderizador deslizar entre celulas
+    this.movimentoVisual = {
+      cabecaDe: cabecaAntiga,
+      caudaDe: { x: caudaAntiga.x, y: caudaAntiga.y },
+      cresceu: vaiCrescer,
+      inicio: performance.now(),
+      duracao: this.velocidadeAtual * (1000 / CONSTANTES.SOLO.TICKS_POR_SEGUNDO),
+    };
+
     // Verificar colisao com comida
     this._verificarComida();
 
-    // Manter quantidade de comida no mapa
+    // Manter quantidade de comida no mapa.
+    // Interromper se nao houver posicao livre — um `while` sem saida
+    // congelaria a aba do navegador.
     while (this.comidas.length < CONSTANTES.SOLO.QUANTIDADE_COMIDA) {
-      this._gerarComida();
+      if (!this._gerarComida()) break;
     }
 
     // Atualizar HUD
@@ -301,13 +328,12 @@ class JogoSolo {
    * @private
    */
   _processarColisao() {
-    // Escudo protege contra colisao
+    // Escudo protege contra colisao: deflete para uma direcao segura
     if (this.efeitos.escudo.ativo) {
       this.efeitos.escudo.ativo = false;
       this.efeitos.escudo.tempoRestante = 0;
 
-      // Inverter direcao como "rebote"
-      this.direcao = CONSTANTES.DIRECAO_OPOSTA[this.direcao];
+      this.direcao = this._direcaoSegura();
       this.filaDeDirecoes = [];
 
       // Som e haptic de escudo bloqueando
@@ -320,6 +346,7 @@ class JogoSolo {
 
     this.vidas--;
     this._atualizarHUD();
+    this.movimentoVisual = null; // Nao interpolar atraves do respawn
 
     if (this.vidas <= 0) {
       this._gameOver();
@@ -335,6 +362,45 @@ class JogoSolo {
   }
 
   /**
+   * Escolhe uma direcao segura ao defletir com o escudo.
+   * Prefere as perpendiculares (celula seguinte livre); a oposta eh o
+   * ultimo recurso — reverter joga a cabeca direto no proprio pescoco.
+   * @returns {string} Direcao escolhida.
+   * @private
+   */
+  _direcaoSegura() {
+    const cabeca = this.cobra[0];
+    const oposta = CONSTANTES.DIRECAO_OPOSTA[this.direcao];
+    const perpendiculares = ['cima', 'baixo', 'esquerda', 'direita']
+      .filter(d => d !== this.direcao && d !== oposta);
+
+    const ehSegura = (direcao) => {
+      const vetor = CONSTANTES.DIRECOES[direcao];
+      const x = cabeca.x + vetor.x;
+      const y = cabeca.y + vetor.y;
+      if (x < 0 || x >= this.larguraGrid || y < 0 || y >= this.alturaGrid) return false;
+      return !this.cobra.some(seg => seg.x === x && seg.y === y);
+    };
+
+    const seguras = perpendiculares.filter(ehSegura);
+    if (seguras.length === 1) return seguras[0];
+    if (seguras.length === 2) {
+      // Desempate: defletir para o lado com mais espaco ate a borda
+      const distanciaBorda = (direcao) => {
+        const vetor = CONSTANTES.DIRECOES[direcao];
+        if (vetor.x > 0) return this.larguraGrid - 1 - cabeca.x;
+        if (vetor.x < 0) return cabeca.x;
+        if (vetor.y > 0) return this.alturaGrid - 1 - cabeca.y;
+        return cabeca.y;
+      };
+      return distanciaBorda(seguras[0]) >= distanciaBorda(seguras[1])
+        ? seguras[0] : seguras[1];
+    }
+
+    return oposta; // Encurralado: manter o rebote original
+  }
+
+  /**
    * Reposiciona a cobra no centro do mapa apos perder uma vida.
    * Concede invulnerabilidade temporaria.
    * @private
@@ -347,7 +413,8 @@ class JogoSolo {
     this.filaDeDirecoes = [];
     this.crescimento = 0;
     this.contadorMovimento = 0;
-    this.velocidadeAtual = CONSTANTES.COBRA.VELOCIDADE_BASE;
+    this.velocidadeAtual = this.velocidadeBase; // Mantem o nivel alcancado
+    this.movimentoVisual = null;
     this.efeitos.velocidade = { ativo: false, tempoRestante: 0 };
 
     // Cobra com tamanho inicial
@@ -396,6 +463,9 @@ class JogoSolo {
         // Aplicar efeito conforme o tipo
         this._aplicarEfeitoComida(comida);
 
+        // Verificar progressao de nivel (jogo acelera)
+        this._verificarNivel();
+
         // Som conforme o tipo de comida
         if (window.som) {
           switch (comida.tipo) {
@@ -443,7 +513,7 @@ class JogoSolo {
       case 'velocidade':
         this.efeitos.velocidade.ativo = true;
         this.efeitos.velocidade.tempoRestante += tipos.VELOCIDADE.duracao;
-        this.velocidadeAtual = CONSTANTES.COBRA.VELOCIDADE_RAPIDA;
+        this.velocidadeAtual = this._velocidadeComBoost();
         break;
 
       case 'dourada':
@@ -461,14 +531,64 @@ class JogoSolo {
     }
   }
 
+  /* =========================================================================
+   * PROGRESSAO DE NIVEL
+   * ======================================================================= */
+
+  /**
+   * Calcula a velocidade com o boost do raio aplicado sobre a base atual.
+   * @returns {number} Ticks entre movimentos com o boost.
+   * @private
+   */
+  _velocidadeComBoost() {
+    return Math.max(CONSTANTES.SOLO.VELOCIDADE_MINIMA - 2,
+      Math.round(this.velocidadeBase / 2));
+  }
+
+  /**
+   * Sobe de nivel conforme a pontuacao cresce, acelerando a cobra.
+   * Cada nivel reduz 1 tick do intervalo entre movimentos, ate o teto.
+   * @private
+   */
+  _verificarNivel() {
+    const solo = CONSTANTES.SOLO;
+    const nivelMaximo = solo.VELOCIDADE_INICIAL - solo.VELOCIDADE_MINIMA + 1;
+    const novoNivel = Math.min(
+      nivelMaximo,
+      1 + Math.floor(this.pontuacao / solo.PONTOS_POR_NIVEL)
+    );
+
+    if (novoNivel === this.nivel) return;
+
+    this.nivel = novoNivel;
+    this.velocidadeBase = solo.VELOCIDADE_INICIAL - (this.nivel - 1);
+    this.velocidadeAtual = this.efeitos.velocidade.ativo
+      ? this._velocidadeComBoost()
+      : this.velocidadeBase;
+
+    // Feedback: texto flutuante na cabeca + som
+    if (this.cobra.length > 0) {
+      const tam = this.renderizador.tamanhoCelula;
+      const cabeca = this.cobra[0];
+      this.particulas.criarTextoFlutuante(
+        cabeca.x * tam + tam / 2,
+        cabeca.y * tam - 6,
+        `Nível ${this.nivel}!`,
+        '#00ccff'
+      );
+    }
+    if (window.som) window.som.nivelSubiu();
+  }
+
   /**
    * Gera uma nova comida aleatoria em posicao livre.
    * Usa sistema de roleta ponderada para sortear o tipo.
+   * @returns {boolean} True se a comida foi criada.
    * @private
    */
   _gerarComida() {
     const posicao = this._encontrarPosicaoLivre();
-    if (!posicao) return;
+    if (!posicao) return false;
 
     // Sortear tipo com roleta ponderada
     const sorteio = Math.random();
@@ -491,6 +611,7 @@ class JogoSolo {
       brilho: tipoSorteado.brilho,
       descricao: tipoSorteado.descricao,
     });
+    return true;
   }
 
   /**
@@ -554,7 +675,7 @@ class JogoSolo {
       if (this.efeitos.velocidade.tempoRestante <= 0) {
         this.efeitos.velocidade.ativo = false;
         this.efeitos.velocidade.tempoRestante = 0;
-        this.velocidadeAtual = CONSTANTES.COBRA.VELOCIDADE_BASE;
+        this.velocidadeAtual = this.velocidadeBase;
       }
     }
 
@@ -604,9 +725,10 @@ class JogoSolo {
         rend.desenharComida(comida.posicao, comida.tipo, comida.cor, comida.brilho);
       }
 
-      // Desenhar cobra
+      // Desenhar cobra com posicoes interpoladas (movimento suave)
+      const cobraVisual = this._cobraVisual();
       rend.desenharCobra(
-        this.cobra,
+        cobraVisual,
         '#00ff88',     // Cor principal (verde neon)
         '#00cc66',     // Cor secundaria
         this.direcao,
@@ -618,8 +740,8 @@ class JogoSolo {
       );
 
       // Trilha de particulas se em velocidade
-      if (this.efeitos.velocidade.ativo && this.cobra.length > 0) {
-        const cauda = this.cobra[this.cobra.length - 1];
+      if (this.efeitos.velocidade.ativo && cobraVisual.length > 0) {
+        const cauda = cobraVisual[cobraVisual.length - 1];
         const tam = rend.tamanhoCelula;
         this.particulas.criarTrilha(
           cauda.x * tam + tam / 2,
@@ -629,8 +751,8 @@ class JogoSolo {
       }
 
       // Brilho do escudo
-      if (this.efeitos.escudo.ativo && this.cobra.length > 0) {
-        const cabeca = this.cobra[0];
+      if (this.efeitos.escudo.ativo && cobraVisual.length > 0) {
+        const cabeca = cobraVisual[0];
         const tam = rend.tamanhoCelula;
         this.particulas.criarBrilho(
           cabeca.x * tam + tam / 2,
@@ -656,6 +778,39 @@ class JogoSolo {
     this._atualizarBarraEfeitos();
   }
 
+  /**
+   * Monta o array de segmentos com a cabeca e a cauda interpoladas entre
+   * a celula anterior e a atual, produzindo movimento visual continuo.
+   * A logica do jogo permanece 100% baseada no grid — isto eh so visual.
+   * @returns {Array<{x:number, y:number}>} Segmentos para desenhar.
+   * @private
+   */
+  _cobraVisual() {
+    const mov = this.movimentoVisual;
+    if (!mov || this.cobra.length === 0) return this.cobra;
+
+    // Progresso do movimento atual (0 = celula antiga, 1 = celula nova).
+    // Pausado: congelar no ultimo progresso em vez de continuar deslizando.
+    let t = (performance.now() - mov.inicio) / mov.duracao;
+    if (this.estado === 'pausado') t = 1;
+    t = Math.max(0, Math.min(1, t));
+
+    const lerp = (de, para) => ({
+      x: de.x + (para.x - de.x) * t,
+      y: de.y + (para.y - de.y) * t,
+    });
+
+    const visual = [lerp(mov.cabecaDe, this.cobra[0]), ...this.cobra.slice(1)];
+
+    // Cauda deslizando para fora da celula antiga (apenas se nao cresceu)
+    if (!mov.cresceu) {
+      const caudaAtual = this.cobra[this.cobra.length - 1];
+      visual.push(lerp(mov.caudaDe, caudaAtual));
+    }
+
+    return visual;
+  }
+
   /* =========================================================================
    * INTERFACE (HUD)
    * ======================================================================= */
@@ -666,6 +821,11 @@ class JogoSolo {
    */
   _atualizarHUD() {
     this.elPontuacao.textContent = this.pontuacao.toLocaleString('pt-BR');
+
+    // Nivel atual (progressao de velocidade)
+    if (this.elNivel) {
+      this.elNivel.textContent = String(this.nivel);
+    }
 
     // Vidas como coracoes
     let vidasHtml = '';
@@ -710,6 +870,44 @@ class JogoSolo {
     this.elBarraEfeitos.innerHTML = html;
   }
 
+  /**
+   * Renderiza o top 5 de recordes na tela de game over,
+   * destacando a pontuacao da partida que acabou de terminar.
+   * @private
+   */
+  _renderizarRecordesGameover() {
+    if (!this.elRecordesGameover) return;
+
+    let recordes = [];
+    try {
+      recordes = JSON.parse(localStorage.getItem('snake_recordes') || '[]');
+    } catch { /* localStorage indisponivel */ }
+
+    if (recordes.length === 0) {
+      this.elRecordesGameover.innerHTML = '';
+      return;
+    }
+
+    recordes.sort((a, b) => b.pontuacao - a.pontuacao);
+    const top5 = recordes.slice(0, 5);
+    let destaqueFeito = false;
+
+    let html = '<h3 class="recordes-gameover-titulo">🏆 Melhores Pontuações</h3>';
+    top5.forEach((r, i) => {
+      const medalha = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      const ehAtual = !destaqueFeito && r.pontuacao === this.pontuacao;
+      if (ehAtual) destaqueFeito = true;
+      html += `
+        <div class="recorde-linha-mini ${ehAtual ? 'recorde-atual' : ''}">
+          <span>${medalha}</span>
+          <span>${r.pontuacao.toLocaleString('pt-BR')} pts</span>
+        </div>
+      `;
+    });
+
+    this.elRecordesGameover.innerHTML = html;
+  }
+
   /* =========================================================================
    * CONTROLES (TECLADO + TOUCH)
    * ======================================================================= */
@@ -740,6 +938,13 @@ class JogoSolo {
 
     // Swipe no canvas para mobile
     this._configurarSwipe();
+
+    // Auto-pause ao sair da aba/minimizar: evita morrer sem estar olhando
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.estado === 'jogando') {
+        this.alternarPausa();
+      }
+    });
   }
 
   /**
@@ -844,6 +1049,14 @@ class JogoSolo {
     if (botaoContinuar) {
       botaoContinuar.addEventListener('click', () => {
         if (this.estado === 'pausado') this.alternarPausa();
+      });
+    }
+
+    // Botao "Recomecar" no overlay de pausa
+    const botaoReiniciarPausa = document.getElementById('botao-reiniciar-pausa');
+    if (botaoReiniciarPausa) {
+      botaoReiniciarPausa.addEventListener('click', () => {
+        if (this.estado === 'pausado') this.iniciar();
       });
     }
 

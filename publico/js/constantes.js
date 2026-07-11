@@ -143,7 +143,10 @@ const CONSTANTES = {
    * ======================================================================= */
   SOLO: {
     QUANTIDADE_COMIDA: 3,       // Comidas simultaneas no mapa
-    TICKS_POR_SEGUNDO: 15,      // Taxa de atualizacao do jogo solo
+    TICKS_POR_SEGUNDO: 60,      // Taxa de atualizacao do jogo solo (fina para progressao)
+    VELOCIDADE_INICIAL: 16,     // Ticks entre movimentos no nivel 1 (~3.75 mov/s)
+    VELOCIDADE_MINIMA: 8,       // Ticks entre movimentos no nivel maximo (~7.5 mov/s)
+    PONTOS_POR_NIVEL: 120,      // Pontos necessarios para subir de nivel
   },
 
   /* =========================================================================

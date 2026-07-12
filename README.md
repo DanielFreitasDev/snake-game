@@ -66,15 +66,21 @@ Um jogo snake moderno e voraz, jogavel no navegador, com **modo solo** e **multi
 - 🏆 Ranking final com medalhas
 - 🔄 Revanche na mesma sala com os mesmos jogadores
 - 🤖 Bots com niveis de dificuldade para preencher a arena
+- 🔌 **Reconexao no meio da partida**: caiu a rede ou recarregou a pagina? Sua vaga (pontos, vidas e eliminacoes) fica reservada por 60 segundos — volte e continue jogando
+- 🏛️ **Hall da Fama persistente**: vitorias, partidas e recordes acumulados entre partidas ficam salvos no servidor (`dados/ranking.json`) e aparecem no lobby
 
 ### Visual e UX
 - 🌙 Tema escuro moderno com efeitos neon
+- 🌌 Menu principal com fundo 3D animado (three.js): oceano de pontos luminosos com parallax de mouse
+- ✨ Animacoes de interface com anime.js (entrada de telas, ranking em cascata, contagem de pontos)
 - 🌊 Movimento suave: as cobras deslizam entre as celulas (interpolacao visual)
 - 🎆 Sistema de particulas para feedback visual
 - 🔊 Efeitos sonoros procedurais estilo 8-bit (Web Audio, sem arquivos)
+- 🎼 **Musica ambiente procedural**: trilha 8-bit gerada em tempo real (pentatonica menor), que acelera conforme o nivel sobe ou a arena encolhe — botao 🎵 dedicado para ligar/desligar
 - 🐍 Cobras com gradiente, olhos e brilho
 - 📱 Suporte a dispositivos mobile (touch e swipe)
 - 🎨 Interface com glassmorphism e animacoes CSS
+- ♿ Respeita `prefers-reduced-motion` (animacoes desativadas para quem prefere menos movimento)
 
 ---
 
@@ -88,6 +94,9 @@ Um jogo snake moderno e voraz, jogavel no navegador, com **modo solo** e **multi
 | **HTML5 Canvas** | Renderizacao do jogo |
 | **CSS3** | Interface com glassmorphism e animacoes |
 | **JavaScript (ES6+)** | Logica do jogo (cliente e servidor) |
+| **three.js** | Fundo 3D do menu principal (vendorizado, funciona offline) |
+| **anime.js** | Animacoes de interface (vendorizado, funciona offline) |
+| **Web Audio API** | Efeitos sonoros e musica ambiente procedurais |
 
 ---
 
@@ -325,8 +334,11 @@ snakis/
 ├── .gitignore                # Arquivos ignorados pelo Git
 ├── README.md                 # Este arquivo
 ├── servidor.js               # Servidor Express + Socket.IO
+├── dados/                    # Criada em runtime (ignorada pelo Git)
+│   └── ranking.json          # Hall da Fama persistente do multiplayer
 ├── jogo/
 │   ├── SalaDeJogo.js         # Logica de uma sala multiplayer (servidor)
+│   ├── RankingPersistente.js # Hall da Fama gravado em disco (JSON atomico)
 │   └── BotIA.js              # Inteligencia artificial dos bots (BFS, flood fill)
 └── publico/                  # Arquivos estaticos servidos ao navegador
     ├── index.html            # Menu principal
@@ -340,9 +352,15 @@ snakis/
         ├── Mobile.js         # Suporte a dispositivos moveis (swipe, haptics)
         ├── Renderizador.js   # Motor de renderizacao Canvas (cobras, comida, coroa)
         ├── SistemaDeParticulas.js  # Efeitos visuais com particulas
-        ├── SistemaDeSom.js   # Efeitos sonoros procedurais 8-bit (Web Audio)
+        ├── SistemaDeSom.js   # Sons 8-bit + musica ambiente procedural (Web Audio)
+        ├── AnimacoesUI.js    # Animacoes de interface (anime.js, com fallback)
+        ├── FundoMenu3D.js    # Fundo 3D do menu (three.js, ES module)
         ├── JogoSolo.js       # Logica completa do modo solo
-        └── ClienteMultijogador.js  # Cliente WebSocket do modo multiplayer
+        ├── ClienteMultijogador.js  # Cliente WebSocket do modo multiplayer
+        └── vendor/           # Bibliotecas vendorizadas (jogo funciona offline)
+            ├── anime.umd.min.js
+            ├── three.module.min.js
+            └── three.core.min.js
 ```
 
 ---
@@ -359,6 +377,7 @@ Edite o arquivo `publico/js/constantes.js` para ajustar:
 - **Vidas iniciais**: `COBRA.VIDAS_INICIAIS`
 - **Quantidade de comida**: `SOLO.QUANTIDADE_COMIDA`, `MULTI.QUANTIDADE_COMIDA`
 - **Duracao da partida multiplayer**: `MULTI.TEMPO_PARTIDA` (em segundos)
+- **Janela de reconexao**: `MULTI.TEMPO_RECONEXAO` (segundos que a vaga de um jogador caido fica reservada)
 - **Probabilidade de comidas especiais**: Ajuste os valores de `probabilidade` em `TIPOS_COMIDA`
 
 ### Alterar cores das cobras
@@ -377,6 +396,7 @@ PORTA=8080 npm start
 
 ### "Conexao com o servidor perdida"
 
+- **No meio de uma partida?** Fique na tela: o jogo tenta reconectar sozinho e sua vaga fica reservada por 60 segundos (pontos e vidas preservados). Recarregar a pagina tambem funciona.
 - Verifique se o servidor ainda esta rodando
 - Certifique-se de estar na mesma rede que o servidor
 - Verifique se o firewall nao esta bloqueando a porta 3000

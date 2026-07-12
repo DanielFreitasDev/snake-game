@@ -104,28 +104,42 @@
   <!-- Botao de pausa mobile -->
   <button id="botao-pausar-mobile" class="botao-pausar-mobile" title="Pausar">⏸</button>
 
-  <!-- Botao de som (mute/unmute) -->
+  <!-- Botoes de som e musica (mute/unmute) -->
+  <button id="botao-musica" class="botao-som botao-musica" title="Ativar/Desativar música">
+    🎵
+  </button>
   <button id="botao-som" class="botao-som" title="Ativar/Desativar som">
     🔊
   </button>
 
   <!-- Scripts -->
+  <script src="/js/vendor/anime.umd.min.js"></script>
   <script src="/js/constantes.js"></script>
   <script src="/js/Mobile.js"></script>
   <script src="/js/SistemaDeParticulas.js"></script>
   <script src="/js/Renderizador.js"></script>
   <script src="/js/SistemaDeSom.js"></script>
+  <script src="/js/AnimacoesUI.js"></script>
   <script src="/js/JogoSolo.js"></script>
   <script>
-    // Controle do botao de som
+    // Controle do botao de som (efeitos + geral)
     document.getElementById('botao-som').addEventListener('click', function() {
       if (!window.som) return;
       const mudo = window.som.alternarMudo();
       this.textContent = mudo ? '🔇' : '🔊';
     });
-    // Estado inicial do botao
+    // Controle do botao de musica ambiente
+    document.getElementById('botao-musica').addEventListener('click', function() {
+      if (!window.som) return;
+      const desligada = window.som.alternarMusica();
+      this.classList.toggle('desativado', desligada);
+    });
+    // Estado inicial dos botoes
     if (window.som && window.som.mudo) {
       document.getElementById('botao-som').textContent = '🔇';
+    }
+    if (window.som && window.som.musicaDesligada) {
+      document.getElementById('botao-musica').classList.add('desativado');
     }
   </script>
 </body>

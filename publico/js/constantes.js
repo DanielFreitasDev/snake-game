@@ -136,6 +136,7 @@ const CONSTANTES = {
     TICKS_POR_SEGUNDO: 20,
     TEMPO_INVULNERAVEL: 3000,   // ms de invulnerabilidade apos respawn
     TEMPO_PARTIDA: 180,         // segundos (3 minutos por partida)
+    TEMPO_RECONEXAO: 60,        // segundos que um jogador caido pode voltar a partida
   },
 
   /* =========================================================================

@@ -880,6 +880,74 @@ button {
   color: var(--cor-texto-secundario);
 }
 
+/* --- Hall da Fama (ranking persistente entre partidas) --- */
+
+.hall-da-fama {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fama-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio-borda-sm);
+  text-align: left;
+}
+
+.fama-item.fama-top {
+  border-color: rgba(255, 215, 0, 0.25);
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.06), var(--cor-superficie));
+}
+
+.fama-posicao {
+  font-size: 1.1rem;
+  min-width: 32px;
+  text-align: center;
+}
+
+.fama-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fama-nome {
+  font-weight: 600;
+  color: var(--cor-texto-destaque);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fama-detalhes {
+  font-size: 0.75rem;
+  color: var(--cor-texto-secundario);
+}
+
+.fama-vitorias {
+  font-family: var(--fonte-titulo);
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--cor-alerta);
+  white-space: nowrap;
+}
+
+.fama-vitorias small {
+  font-family: inherit;
+  font-size: 0.6rem;
+  font-weight: 400;
+  color: var(--cor-texto-secundario);
+}
+
 /* --- Sala de espera --- */
 
 .container-sala {
@@ -1182,6 +1250,13 @@ button {
   text-decoration: line-through;
 }
 
+.placar-jogador.desconectado {
+  opacity: 0.45;
+  text-decoration: none;
+  font-style: italic;
+  border: 1px dashed rgba(255, 170, 0, 0.35);
+}
+
 .placar-jogador-cor {
   width: 10px;
   height: 10px;
@@ -1400,6 +1475,84 @@ button {
   transform: scale(0.95);
 }
 
+/* Botao de musica ambiente: ao lado do botao de som */
+.botao-musica {
+  right: 60px;
+}
+
+/* Estado "desligado" do botao de musica */
+.botao-som.desativado {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+/* =========================================================================
+   6c. OVERLAY DE RECONEXAO (MULTIPLAYER)
+   ======================================================================= */
+
+.overlay-reconexao {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 11, 30, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.reconexao-conteudo {
+  text-align: center;
+  padding: 40px 32px;
+  background: var(--vidro-fundo);
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--raio-borda);
+  max-width: 90vw;
+}
+
+.reconexao-icone {
+  font-size: 3rem;
+  margin-bottom: 12px;
+  animation: pulsarReconexao 1.2s ease-in-out infinite;
+}
+
+.reconexao-conteudo h2 {
+  font-family: var(--fonte-titulo);
+  font-size: 1.4rem;
+  color: var(--cor-alerta);
+  margin-bottom: 8px;
+}
+
+.reconexao-conteudo p {
+  color: var(--cor-texto-secundario);
+  font-size: 0.95rem;
+}
+
+.reconexao-dica {
+  margin-top: 10px;
+  font-size: 0.8rem !important;
+  opacity: 0.8;
+}
+
+/* Reticencias animadas do "Reconectando..." */
+.reconexao-pontos span {
+  animation: piscarPonto 1.4s infinite;
+}
+
+.reconexao-pontos span:nth-child(2) { animation-delay: 0.2s; }
+.reconexao-pontos span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes pulsarReconexao {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%      { transform: scale(1.15); opacity: 0.7; }
+}
+
+@keyframes piscarPonto {
+  0%, 60%, 100% { opacity: 0.2; }
+  30%           { opacity: 1; }
+}
+
 /* =========================================================================
    7. ANIMACOES E KEYFRAMES
    ======================================================================= */
@@ -1565,6 +1718,12 @@ button {
     height: 36px;
     font-size: 1rem;
     z-index: 200;
+  }
+
+  /* Botao de musica acompanha, empilhado acima do som */
+  .botao-musica {
+    right: 8px;
+    bottom: 52px;
   }
 
   /* D-pad maior e mais acessivel */

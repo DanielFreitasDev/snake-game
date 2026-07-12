@@ -96,6 +96,17 @@ class SalaDeJogo {
 
     /** @type {boolean} Se a arena esta atualmente encolhendo */
     this.encolhendo = false;
+
+    /* --- Callbacks configurados pelo servidor --- */
+
+    /** @type {Function|null} Chamado com o ranking final ao terminar a partida */
+    this.aoFinalizarPartida = null;
+
+    /** @type {Function|null} Chamado quando um jogador eh removido em definitivo */
+    this.aoRemoverJogador = null;
+
+    /** @type {Function|null} Chamado quando a sala fica sem humanos e deve ser destruida */
+    this.aoEsvaziar = null;
   }
 
   /* =========================================================================
@@ -139,8 +150,9 @@ class SalaDeJogo {
    * Cada jogador recebe uma cor unica e seus dados iniciais.
    * @param {string} socketId - ID do socket do jogador.
    * @param {string} apelido - Nickname escolhido pelo jogador.
+   * @param {string|null} [token] - Token de sessao para reconexao (opcional).
    */
-  adicionarJogador(socketId, apelido) {
+  adicionarJogador(socketId, apelido, token) {
     const cor = this._proximaCorLivre();
 
     this.jogadores.set(socketId, {
@@ -149,6 +161,10 @@ class SalaDeJogo {
       cor,
       ehBot: false,
       pronto: false,
+      token: typeof token === 'string' ? token : null,
+      desconectado: false,
+      ticksParaRemocao: 0,
+      estavaVivo: true,
       cobra: [],
       direcao: 'direita',
       proximaDirecao: 'direita',
@@ -186,11 +202,171 @@ class SalaDeJogo {
         });
       }
 
-      const vivos = this._contarJogadoresVivos();
+      // Desconectados em periodo de graca ainda contam como "na disputa"
+      const vivos = this._contarJogadoresVivos() + this._contarDesconectadosEmGraca();
       if (vivos <= 1) {
         this.finalizarJogo();
       }
     }
+  }
+
+  /* =========================================================================
+   * RECONEXAO DE JOGADORES
+   * Quando um jogador humano cai no meio da partida, ele entra em um
+   * "periodo de graca": a cobra sai do tabuleiro (derrubando comida),
+   * mas apelido, pontuacao, vidas e eliminacoes ficam reservados.
+   * Se voltar a tempo com o mesmo token de sessao, renasce onde parou.
+   * ======================================================================= */
+
+  /**
+   * Marca um jogador como desconectado, preservando seus dados para
+   * uma possivel reconexao. So vale durante a partida e para humanos
+   * que informaram token de sessao ao entrar.
+   * @param {string} socketId - ID do socket que caiu.
+   * @returns {boolean} True se o jogador entrou no periodo de graca.
+   */
+  marcarDesconectado(socketId) {
+    const jogador = this.jogadores.get(socketId);
+    if (!jogador || jogador.ehBot || !jogador.token) return false;
+    if (this.estado !== 'jogando' || jogador.desconectado) return false;
+
+    jogador.desconectado = true;
+    jogador.ticksParaRemocao =
+      CONSTANTES.MULTI.TEMPO_RECONEXAO * CONSTANTES.MULTI.TICKS_POR_SEGUNDO;
+    jogador.estavaVivo = jogador.vivo;
+
+    // Retirar a cobra do tabuleiro enquanto o jogador estiver fora,
+    // derrubando comida como em uma morte (o corpo nao vira obstaculo fantasma)
+    const corpoAnterior = jogador.cobra;
+    jogador.vivo = false;
+    jogador.cobra = [];
+    jogador.filaDeDirecoes = [];
+    this._droparComidaMorte(corpoAnterior);
+
+    this.eventosPendentes.push({
+      tipo: 'jogador_desconectou',
+      jogadorId: jogador.id,
+      apelido: jogador.apelido,
+    });
+
+    return true;
+  }
+
+  /**
+   * Reconecta um jogador identificado pelo token de sessao, remapeando
+   * seus dados para o novo socket. Tambem cobre "takeover": se o socket
+   * antigo ainda constar como conectado (rede instavel), a sessao migra
+   * para o novo socket mesmo assim.
+   * @param {string} token - Token de sessao apresentado pelo cliente.
+   * @param {string} novoSocketId - ID do novo socket.
+   * @returns {{sucesso: boolean, erro?: string, socketIdAntigo?: string,
+   *            estado?: string, apelido?: string}}
+   */
+  reconectarJogador(token, novoSocketId) {
+    if (typeof token !== 'string' || !token) {
+      return { sucesso: false, erro: 'Sessão inválida.' };
+    }
+
+    let jogador = null;
+    let socketIdAntigo = null;
+    for (const [chave, candidato] of this.jogadores) {
+      if (!candidato.ehBot && candidato.token === token) {
+        jogador = candidato;
+        socketIdAntigo = chave;
+        break;
+      }
+    }
+
+    if (!jogador) {
+      return { sucesso: false, erro: 'Sessão não encontrada nesta sala.' };
+    }
+
+    // Re-chavear o Map de jogadores para o novo socket
+    this.jogadores.delete(socketIdAntigo);
+    jogador.id = novoSocketId;
+    this.jogadores.set(novoSocketId, jogador);
+
+    if (jogador.desconectado) {
+      jogador.desconectado = false;
+      jogador.ticksParaRemocao = 0;
+
+      // Renascer apenas quem ainda estava vivo e tem vidas; quem ja havia
+      // sido eliminado volta como espectador ate o fim da partida
+      if (this.estado === 'jogando' && jogador.estavaVivo && jogador.vidas > 0) {
+        this._respawnarJogador(jogador);
+        jogador.vivo = true;
+      }
+
+      this.eventosPendentes.push({
+        tipo: 'jogador_reconectou',
+        jogadorId: jogador.id,
+        apelido: jogador.apelido,
+      });
+    }
+
+    return {
+      sucesso: true,
+      socketIdAntigo,
+      estado: this.estado,
+      apelido: jogador.apelido,
+    };
+  }
+
+  /**
+   * Decrementa o periodo de graca dos desconectados e remove em
+   * definitivo quem nao voltou a tempo.
+   * @returns {boolean} True se o tick deve ser abortado (sala destruida
+   *          ou partida finalizada por falta de adversarios).
+   * @private
+   */
+  _atualizarGracaDesconectados() {
+    let removeuAlguem = false;
+
+    for (const [id, jogador] of [...this.jogadores]) {
+      if (!jogador.desconectado) continue;
+
+      jogador.ticksParaRemocao--;
+      if (jogador.ticksParaRemocao > 0) continue;
+
+      // Tempo esgotado: remocao definitiva
+      this.jogadores.delete(id);
+      removeuAlguem = true;
+      this.eventosRecentes.push({
+        tipo: 'jogador_saiu',
+        apelido: jogador.apelido,
+      });
+      if (this.aoRemoverJogador) this.aoRemoverJogador(jogador);
+    }
+
+    if (!removeuAlguem) return false;
+
+    // Sem nenhum humano restante (nem em graca): sala nao tem mais motivo de existir
+    if (this.obterQuantidadeHumanos() === 0) {
+      if (this.aoEsvaziar) this.aoEsvaziar();
+      return true;
+    }
+
+    // Mesma regra da saida voluntaria: sobrando 1 na disputa, acabou
+    const naDisputa = this._contarJogadoresVivos() + this._contarDesconectadosEmGraca();
+    if (naDisputa <= 1) {
+      this.finalizarJogo();
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Conta os jogadores desconectados que ainda podem voltar.
+   * @returns {number}
+   * @private
+   */
+  _contarDesconectadosEmGraca() {
+    let contagem = 0;
+    for (const jogador of this.jogadores.values()) {
+      if (jogador.desconectado) contagem++;
+    }
+    return contagem;
   }
 
   /**
@@ -235,6 +411,10 @@ class SalaDeJogo {
       cor,
       ehBot: true,
       pronto: true,
+      token: null,
+      desconectado: false,
+      ticksParaRemocao: 0,
+      estavaVivo: true,
       cobra: [],
       direcao: 'direita',
       proximaDirecao: 'direita',
@@ -384,7 +564,7 @@ class SalaDeJogo {
       this.intervaloJogo = null;
     }
 
-    // Montar ranking final
+    // Montar ranking final (inclui desconectados: a pontuacao deles vale)
     const ranking = [...this.jogadores.values()]
       .sort((a, b) => b.pontuacao - a.pontuacao)
       .map((j, posicao) => ({
@@ -396,7 +576,24 @@ class SalaDeJogo {
         ehBot: j.ehBot,
       }));
 
+    // Registrar no ranking persistente (Hall da Fama)
+    if (this.aoFinalizarPartida) {
+      try {
+        this.aoFinalizarPartida(ranking);
+      } catch (erro) {
+        console.error(`[Sala ${this.codigo}] Falha ao registrar ranking:`, erro.message);
+      }
+    }
+
     this.io.to(this.codigo).emit('partida-finalizada', { ranking });
+
+    // Quem estava em periodo de graca nao tem mais partida para voltar
+    for (const [id, jogador] of [...this.jogadores]) {
+      if (jogador.desconectado) {
+        this.jogadores.delete(id);
+        if (this.aoRemoverJogador) this.aoRemoverJogador(jogador);
+      }
+    }
   }
 
   /**
@@ -428,6 +625,14 @@ class SalaDeJogo {
     this.bordaArena = 0;
     this.encolhendo = false;
     this.tempoRestante = this.tempoPartida;
+
+    // Garantia extra: nenhum "fantasma" desconectado atravessa para o lobby
+    for (const [id, jogador] of [...this.jogadores]) {
+      if (jogador.desconectado) {
+        this.jogadores.delete(id);
+        if (this.aoRemoverJogador) this.aoRemoverJogador(jogador);
+      }
+    }
 
     for (const jogador of this.jogadores.values()) {
       jogador.pronto = jogador.ehBot; // Bots continuam prontos; humanos reconfirmam
@@ -532,7 +737,11 @@ class SalaDeJogo {
       return;
     }
 
-    // 1. Atualizar temporizadores de efeitos e invulnerabilidade
+    // 1a. Expirar periodos de graca de jogadores desconectados.
+    // Se a sala ficou sem humanos, ela foi destruida: abortar o tick.
+    if (this._atualizarGracaDesconectados()) return;
+
+    // 1b. Atualizar temporizadores de efeitos e invulnerabilidade
     this._atualizarTemporizadores();
 
     // 2. Atualizar decisoes dos bots
@@ -578,8 +787,9 @@ class SalaDeJogo {
       }
     }
 
-    // 9. Verificar se resta apenas 1 jogador vivo
-    const vivos = this._contarJogadoresVivos();
+    // 9. Verificar se resta apenas 1 jogador na disputa.
+    // Desconectados em periodo de graca contam: eles podem voltar.
+    const vivos = this._contarJogadoresVivos() + this._contarDesconectadosEmGraca();
     if (vivos <= 1 && this.jogadores.size > 1) {
       // Dar um pequeno delay para a ultima acao ser visivel
       setTimeout(() => this.finalizarJogo(), 500);
@@ -1302,6 +1512,7 @@ class SalaDeJogo {
         ehRei: jogador.id === idRei,
         eliminacoes: jogador.eliminacoes,
         ehBot: jogador.ehBot,
+        desconectado: jogador.desconectado,
       });
     }
 

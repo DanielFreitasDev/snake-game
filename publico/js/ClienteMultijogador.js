@@ -86,6 +86,10 @@ class ClienteMultijogador {
     this.elBotaoJogarNovamente = document.getElementById('botao-jogar-novamente');
     this.elBotaoSairLobby = document.getElementById('botao-sair-lobby');
 
+    // Reconexao e Hall da Fama
+    this.elOverlayReconexao = document.getElementById('overlay-reconexao');
+    this.elHallDaFama = document.getElementById('hall-da-fama');
+
     /* -----------------------------------------------------------------------
      * ESTADO DO CLIENTE
      * --------------------------------------------------------------------- */
@@ -122,6 +126,15 @@ class ClienteMultijogador {
 
     /** @type {string} Cache do HTML do placar (evita innerHTML redundante) */
     this.placarHtmlCache = '';
+
+    /** @type {string} Token de sessao para reconexao (persistido por aba) */
+    this.tokenSessao = this._obterTokenSessao();
+
+    /** @type {boolean} Se estamos aguardando a reconexao apos uma queda */
+    this.aguardandoReconexao = false;
+
+    /** @type {number} Intensidade atual da musica ambiente (0..1) */
+    this.intensidadeMusica = 0.3;
 
     /* -----------------------------------------------------------------------
      * CONEXAO SOCKET.IO
@@ -160,6 +173,17 @@ class ClienteMultijogador {
    */
   _registrarEventosSocket() {
     /**
+     * Evento: connect
+     * Disparado na primeira conexao e a cada reconexao automatica do
+     * Socket.IO. Sempre tentamos retomar uma sessao pendente: apos um
+     * reload da pagina ou uma queda de rede no meio da partida, o
+     * servidor reconhece o token e devolve o jogador ao jogo.
+     */
+    this.socket.on('connect', () => {
+      this._tentarReconectarPartida();
+    });
+
+    /**
      * Evento: sala-atualizada
      * Recebido quando o estado do lobby/sala muda (jogador entrou, saiu, ficou pronto).
      */
@@ -173,7 +197,12 @@ class ClienteMultijogador {
      */
     this.socket.on('partida-iniciada', () => {
       this._iniciarTelaJogo();
-      if (window.som) window.som.iniciarJogo();
+      if (window.som) {
+        window.som.iniciarJogo();
+        this.intensidadeMusica = 0.3;
+        window.som.definirIntensidadeMusica(this.intensidadeMusica);
+        window.som.iniciarMusica('multi');
+      }
     });
 
     /**
@@ -197,19 +226,121 @@ class ClienteMultijogador {
      */
     this.socket.on('partida-finalizada', (resultado) => {
       this._exibirResultado(resultado);
-      if (window.som) window.som.partidaFinalizada();
+      if (window.som) {
+        window.som.pararMusica();
+        window.som.partidaFinalizada();
+      }
       Mobile.liberarGestos();
       Mobile.vibrarGameOver();
     });
 
     /**
      * Evento: disconnect
-     * Tratamento de desconexao inesperada.
+     * Queda de conexao. Se estavamos em uma sala/partida, mostramos o
+     * overlay de reconexao e deixamos o Socket.IO tentar reconectar —
+     * o servidor guarda nossa vaga por um periodo de graca. No lobby,
+     * a queda eh silenciosa (a proxima acao reconecta sozinha).
      */
     this.socket.on('disconnect', () => {
-      this._exibirErro('Conexão com o servidor perdida. Tente novamente.');
-      this._mostrarTela('lobby');
+      if (window.som) window.som.pararMusica();
+
+      if (this.telaAtiva === 'lobby') return;
+
+      this.aguardandoReconexao = true;
+      this._mostrarOverlayReconexao();
     });
+  }
+
+  /* =========================================================================
+   * RECONEXAO DE SESSAO
+   * ======================================================================= */
+
+  /**
+   * Recupera (ou cria) o token de sessao desta aba. Fica no
+   * sessionStorage: sobrevive a reloads da pagina, mas cada aba tem o
+   * seu — duas abas no mesmo navegador sao dois jogadores distintos.
+   * @returns {string} Token de sessao.
+   * @private
+   */
+  _obterTokenSessao() {
+    const gerar = () => (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `tok-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+
+    try {
+      let token = sessionStorage.getItem('snakis_token_sessao');
+      if (!token) {
+        token = gerar();
+        sessionStorage.setItem('snakis_token_sessao', token);
+      }
+      return token;
+    } catch {
+      return gerar();
+    }
+  }
+
+  /**
+   * Pergunta ao servidor se ha uma sessao para retomar com nosso token.
+   * Cobre dois cenarios: queda de rede no meio da partida (overlay
+   * visivel) e reload da pagina com partida em andamento.
+   * @private
+   */
+  _tentarReconectarPartida() {
+    if (!this.tokenSessao) return;
+
+    this.socket.emit('reconectar-partida', { token: this.tokenSessao }, (resposta) => {
+      if (resposta && resposta.sucesso) {
+        this.aguardandoReconexao = false;
+        this.codigoSala = resposta.codigo;
+        this._esconderOverlayReconexao();
+
+        if (resposta.estado === 'jogando') {
+          this._iniciarTelaJogo();
+          if (window.som) {
+            window.som.definirIntensidadeMusica(this.intensidadeMusica);
+            window.som.iniciarMusica('multi');
+          }
+        } else if (resposta.estado === 'finalizado') {
+          // A partida acabou enquanto estavamos fora: seguir para a revanche
+          this._solicitarRevanche();
+        } else {
+          this._mostrarTela('sala');
+          this.elSalaCodigo.textContent = resposta.codigo;
+        }
+        return;
+      }
+
+      // Sem sessao para retomar. Se estavamos aguardando (caimos no meio
+      // do jogo), a partida ja era: voltar ao lobby com aviso.
+      if (this.aguardandoReconexao) {
+        this.aguardandoReconexao = false;
+        this._esconderOverlayReconexao();
+        this.codigoSala = null;
+        this._mostrarTela('lobby');
+        this._atualizarListaSalas();
+        this._exibirErro((resposta && resposta.erro) || 'Não foi possível voltar à partida.');
+      }
+    });
+  }
+
+  /**
+   * Mostra o overlay "reconectando..." sobre a tela atual.
+   * @private
+   */
+  _mostrarOverlayReconexao() {
+    if (this.elOverlayReconexao) {
+      this.elOverlayReconexao.style.display = 'flex';
+    }
+  }
+
+  /**
+   * Esconde o overlay de reconexao.
+   * @private
+   */
+  _esconderOverlayReconexao() {
+    if (this.elOverlayReconexao) {
+      this.elOverlayReconexao.style.display = 'none';
+    }
   }
 
   /* =========================================================================
@@ -222,12 +353,23 @@ class ClienteMultijogador {
    * @private
    */
   _mostrarTela(nome) {
+    const telaAnterior = this.telaAtiva;
     this.telaAtiva = nome;
 
     this.elTelaLobby.style.display = nome === 'lobby' ? 'block' : 'none';
     this.elTelaSala.style.display = nome === 'sala' ? 'block' : 'none';
     this.elTelaJogo.style.display = nome === 'jogo' ? 'block' : 'none';
     this.elTelaResultado.style.display = nome === 'resultado' ? 'block' : 'none';
+
+    // Entrada animada da nova tela (exceto o jogo, que ja anima sozinho)
+    if (nome !== 'jogo' && nome !== telaAnterior && window.AnimacoesUI) {
+      const mapa = {
+        lobby: this.elTelaLobby,
+        sala: this.elTelaSala,
+        resultado: this.elTelaResultado,
+      };
+      AnimacoesUI.telaEntrou(mapa[nome]);
+    }
 
     // Controles mobile no jogo
     const controlesMobile = document.getElementById('controles-mobile-multi');
@@ -256,6 +398,9 @@ class ClienteMultijogador {
    * @private
    */
   _atualizarListaSalas() {
+    // O Hall da Fama acompanha toda atualizacao do lobby
+    this._atualizarHallDaFama();
+
     this.socket.emit('listar-salas', (salas) => {
       if (salas.length === 0) {
         this.elListaSalas.innerHTML = '<p class="salas-vazio">Nenhuma sala disponível. Crie uma!</p>';
@@ -285,6 +430,48 @@ class ClienteMultijogador {
   }
 
   /**
+   * Busca o ranking persistente no servidor e renderiza o Hall da Fama
+   * no lobby (vitorias e recordes acumulados entre partidas).
+   * @private
+   */
+  _atualizarHallDaFama() {
+    if (!this.elHallDaFama) return;
+
+    this.socket.emit('obter-ranking', (ranking) => {
+      if (!Array.isArray(ranking) || ranking.length === 0) {
+        this.elHallDaFama.innerHTML =
+          '<p class="salas-vazio">Nenhuma lenda ainda. Vença partidas para entrar!</p>';
+        return;
+      }
+
+      let html = '';
+      for (const registro of ranking) {
+        const medalha = registro.posicao === 1 ? '🥇'
+          : registro.posicao === 2 ? '🥈'
+          : registro.posicao === 3 ? '🥉'
+          : `${registro.posicao}º`;
+        const rotuloVitorias = registro.vitorias === 1 ? 'vitória' : 'vitórias';
+
+        html += `
+          <div class="fama-item ${registro.posicao <= 3 ? 'fama-top' : ''}">
+            <span class="fama-posicao">${medalha}</span>
+            <div class="fama-info">
+              <span class="fama-nome">${escaparHtml(registro.apelido)}</span>
+              <span class="fama-detalhes">${registro.partidas} partida${registro.partidas === 1 ? '' : 's'} · melhor: ${registro.melhorPontuacao.toLocaleString('pt-BR')} pts</span>
+            </div>
+            <span class="fama-vitorias">🏆 ${registro.vitorias} <small>${rotuloVitorias}</small></span>
+          </div>
+        `;
+      }
+      this.elHallDaFama.innerHTML = html;
+
+      if (window.AnimacoesUI) {
+        AnimacoesUI.listaEmCascata(this.elHallDaFama, '.fama-item');
+      }
+    });
+  }
+
+  /**
    * Valida o apelido digitado pelo jogador.
    * @returns {string|null} Apelido validado ou null se invalido.
    * @private
@@ -309,7 +496,7 @@ class ClienteMultijogador {
     this.apelido = apelido;
     localStorage.setItem('snake_apelido', apelido);
 
-    this.socket.emit('criar-sala', { apelido }, (resposta) => {
+    this.socket.emit('criar-sala', { apelido, token: this.tokenSessao }, (resposta) => {
       if (resposta.sucesso) {
         this.codigoSala = resposta.codigo;
         this.estouPronto = false;
@@ -339,7 +526,7 @@ class ClienteMultijogador {
     this.apelido = apelido;
     localStorage.setItem('snake_apelido', apelido);
 
-    this.socket.emit('entrar-sala', { codigo, apelido }, (resposta) => {
+    this.socket.emit('entrar-sala', { codigo, apelido, token: this.tokenSessao }, (resposta) => {
       if (resposta.sucesso) {
         this.codigoSala = resposta.codigo;
         this.estouPronto = false;
@@ -375,6 +562,15 @@ class ClienteMultijogador {
    */
   _atualizarSalaEspera(infoSala) {
     if (this.telaAtiva !== 'sala') return;
+
+    // Sincronizar nosso estado de "pronto" com o servidor (cobre
+    // reconexoes e a volta da revanche, quando o servidor reseta o pronto)
+    const meusDados = infoSala.jogadores.find(j => j.id === this.socket.id);
+    if (meusDados && meusDados.pronto !== this.estouPronto) {
+      this.estouPronto = meusDados.pronto;
+      this.elBotaoPronto.textContent = this.estouPronto ? 'Cancelar Prontidão' : 'Estou Pronto!';
+      this.elBotaoPronto.classList.toggle('pronto-ativo', this.estouPronto);
+    }
 
     // Renderizar lista de jogadores
     let html = '';
@@ -452,6 +648,13 @@ class ClienteMultijogador {
    * @private
    */
   _iniciarTelaJogo() {
+    // Garantir que nao ha loop de renderizacao anterior rodando
+    // (reconexao com a tela de jogo ja ativa criaria um segundo loop)
+    if (this.frameAnimacao) {
+      cancelAnimationFrame(this.frameAnimacao);
+      this.frameAnimacao = null;
+    }
+
     this._mostrarTela('jogo');
 
     // Resetar estado visual da partida anterior
@@ -719,14 +922,18 @@ class ClienteMultijogador {
     let placarHtml = '';
     for (const j of jogadoresOrdenados) {
       const coroa = j.ehRei ? '<span class="placar-jogador-coroa">👑</span>' : '';
-      const classes = [j.vivo ? '' : 'morto', j.id === this.socket.id ? 'eu' : '']
-        .filter(Boolean).join(' ');
+      const classes = [
+        j.vivo ? '' : 'morto',
+        j.id === this.socket.id ? 'eu' : '',
+        j.desconectado ? 'desconectado' : '',
+      ].filter(Boolean).join(' ');
       const botTag = j.ehBot ? ' 🤖' : '';
+      const quedaTag = j.desconectado ? ' 📡' : '';
       placarHtml += `
         <div class="placar-jogador ${classes}">
           <span class="placar-jogador-cor" style="background: ${j.cor.principal};"></span>
           ${coroa}
-          <span class="placar-jogador-nome">${escaparHtml(j.apelido)}${botTag}</span>
+          <span class="placar-jogador-nome">${escaparHtml(j.apelido)}${botTag}${quedaTag}</span>
           <span class="placar-jogador-pts">${j.pontuacao}</span>
         </div>
       `;
@@ -819,6 +1026,15 @@ class ClienteMultijogador {
           this._adicionarFeed(`🚪 ${evento.apelido} saiu da partida`);
           break;
 
+        case 'jogador_desconectou':
+          this._adicionarFeed(`📡 ${evento.apelido} perdeu a conexão...`);
+          break;
+
+        case 'jogador_reconectou':
+          this._adicionarFeed(`🔌 ${evento.apelido} voltou à partida!`);
+          if (window.som && evento.jogadorId === this.socket.id) window.som.respawnar();
+          break;
+
         case 'arena_encolhendo':
           this._adicionarFeed('⚠️ Arena encolhendo! Cuidado!');
           if (window.som) window.som.arenaEncolhendo();
@@ -826,6 +1042,9 @@ class ClienteMultijogador {
 
         case 'arena_encolheu':
           this._adicionarFeed('🔥 Arena encolheu! Zona menor!');
+          // Musica acompanha a tensao da arena apertando
+          this.intensidadeMusica = Math.min(1, this.intensidadeMusica + 0.22);
+          if (window.som) window.som.definirIntensidadeMusica(this.intensidadeMusica);
           break;
       }
     }
@@ -852,6 +1071,32 @@ class ClienteMultijogador {
     while (this.elFeedEventos.children.length > 8) {
       this.elFeedEventos.removeChild(this.elFeedEventos.lastChild);
     }
+  }
+
+  /**
+   * Pede ao servidor para reabrir a sala finalizada (revanche) e navega
+   * para a sala de espera. Usado pelo botao "Revanche" e pela reconexao
+   * quando a partida terminou enquanto estavamos fora.
+   * @private
+   */
+  _solicitarRevanche() {
+    this.socket.emit('voltar-sala', (resposta) => {
+      this.ultimoEstado = null;
+      this.estouPronto = false;
+      this.elBotaoPronto.textContent = 'Estou Pronto!';
+      this.elBotaoPronto.classList.remove('pronto-ativo');
+
+      if (resposta && resposta.sucesso) {
+        this._mostrarTela('sala');
+        this.elSalaCodigo.textContent = this.codigoSala;
+      } else {
+        // Sala nao existe mais (todos sairam): voltar ao lobby
+        this.codigoSala = null;
+        this._mostrarTela('lobby');
+        this._atualizarListaSalas();
+        this._exibirErro((resposta && resposta.erro) || 'A sala foi encerrada.');
+      }
+    });
   }
 
   /* =========================================================================
@@ -882,12 +1127,20 @@ class ClienteMultijogador {
             <div class="ranking-nome">${escaparHtml(item.apelido)}${botTag}</div>
             <div class="ranking-stats">${item.eliminacoes} ${rotuloEliminacoes}</div>
           </div>
-          <span class="ranking-pontuacao">${item.pontuacao.toLocaleString('pt-BR')}</span>
+          <span class="ranking-pontuacao" data-pontos="${item.pontuacao}">${item.pontuacao.toLocaleString('pt-BR')}</span>
         </div>
       `;
     }
 
     this.elRankingFinal.innerHTML = html;
+
+    // Revelacao em cascata + contagem animada das pontuacoes
+    if (window.AnimacoesUI) {
+      AnimacoesUI.listaEmCascata(this.elRankingFinal, '.ranking-item');
+      this.elRankingFinal.querySelectorAll('.ranking-pontuacao').forEach((el) => {
+        AnimacoesUI.contarAte(el, Number(el.dataset.pontos) || 0);
+      });
+    }
   }
 
   /* =========================================================================
@@ -1061,25 +1314,7 @@ class ClienteMultijogador {
     });
 
     // Resultado: Jogar novamente (revanche na MESMA sala, com os mesmos jogadores)
-    this.elBotaoJogarNovamente.addEventListener('click', () => {
-      this.socket.emit('voltar-sala', (resposta) => {
-        this.ultimoEstado = null;
-        this.estouPronto = false;
-        this.elBotaoPronto.textContent = 'Estou Pronto!';
-        this.elBotaoPronto.classList.remove('pronto-ativo');
-
-        if (resposta && resposta.sucesso) {
-          this._mostrarTela('sala');
-          this.elSalaCodigo.textContent = this.codigoSala;
-        } else {
-          // Sala nao existe mais (todos sairam): voltar ao lobby
-          this.codigoSala = null;
-          this._mostrarTela('lobby');
-          this._atualizarListaSalas();
-          this._exibirErro((resposta && resposta.erro) || 'A sala foi encerrada.');
-        }
-      });
-    });
+    this.elBotaoJogarNovamente.addEventListener('click', () => this._solicitarRevanche());
 
     // Resultado: Sair para o lobby
     if (this.elBotaoSairLobby) {

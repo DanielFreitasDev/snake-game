@@ -21,6 +21,7 @@ const { Server } = require('socket.io');
 const path = require('path');
 const os = require('os');
 const SalaDeJogo = require('./jogo/SalaDeJogo');
+const RankingPersistente = require('./jogo/RankingPersistente');
 
 /* =========================================================================
  * INICIALIZACAO DO SERVIDOR
@@ -55,6 +56,59 @@ const salas = new Map();
 
 /** @type {Map<string, string>} Mapa de socketId do jogador -> codigo da sala */
 const jogadorParaSala = new Map();
+
+/** @type {Map<string, string>} Mapa de token de sessao -> codigo da sala (reconexao) */
+const tokenParaSala = new Map();
+
+/** Ranking persistente entre partidas (Hall da Fama), gravado em dados/ranking.json */
+const rankingPersistente = new RankingPersistente();
+
+/**
+ * Valida um token de sessao vindo do cliente. Tokens sao UUIDs (ou
+ * equivalentes) gerados no navegador: apenas letras, numeros e hifens.
+ * @param {*} token - Valor bruto recebido.
+ * @returns {boolean} True se o token pode ser usado.
+ */
+function tokenValido(token) {
+  return typeof token === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(token);
+}
+
+/**
+ * Cria uma sala ja conectada aos servicos do servidor: ranking
+ * persistente, limpeza de tokens e autodestruicao quando esvaziar.
+ * @param {string} codigo - Codigo da nova sala.
+ * @returns {SalaDeJogo}
+ */
+function criarSalaConfigurada(codigo) {
+  const sala = new SalaDeJogo(codigo, io);
+
+  sala.aoFinalizarPartida = (ranking) => rankingPersistente.registrarPartida(ranking);
+  sala.aoRemoverJogador = (jogador) => {
+    if (jogador && jogador.token) tokenParaSala.delete(jogador.token);
+  };
+  sala.aoEsvaziar = () => destruirSala(codigo);
+
+  return sala;
+}
+
+/**
+ * Para o loop da sala, remove-a do registro e limpa os tokens de
+ * sessao que apontavam para ela.
+ * @param {string} codigo - Codigo da sala a destruir.
+ */
+function destruirSala(codigo) {
+  const sala = salas.get(codigo);
+  if (!sala) return;
+
+  sala.parar();
+  salas.delete(codigo);
+
+  for (const [token, codigoDaSala] of tokenParaSala) {
+    if (codigoDaSala === codigo) tokenParaSala.delete(token);
+  }
+
+  console.log(`[Sala] Sala ${codigo} removida (vazia)`);
+}
 
 /**
  * Gera um codigo alfanumerico aleatorio para identificar uma sala.
@@ -159,18 +213,20 @@ io.on('connection', (socket) => {
   registrar('criar-sala', (dados, callback) => {
     const responder = callbackSeguro(callback);
     const apelido = dados && dados.apelido;
+    const token = dados && dados.token;
 
     // Se ja esta em uma sala, sair primeiro
     _sairDaSalaAtual(socket);
 
     const codigo = gerarCodigoSala();
-    const sala = new SalaDeJogo(codigo, io);
+    const sala = criarSalaConfigurada(codigo);
     salas.set(codigo, sala);
 
     // Entrar na room do Socket.IO e registrar o jogador
     socket.join(codigo);
-    sala.adicionarJogador(socket.id, apelido);
+    sala.adicionarJogador(socket.id, apelido, tokenValido(token) ? token : null);
     jogadorParaSala.set(socket.id, codigo);
+    if (tokenValido(token)) tokenParaSala.set(token, codigo);
 
     console.log(`[Sala] "${apelido}" criou a sala ${codigo}`);
     responder({ sucesso: true, codigo });
@@ -187,6 +243,7 @@ io.on('connection', (socket) => {
     const responder = callbackSeguro(callback);
     const codigo = dados && dados.codigo;
     const apelido = dados && dados.apelido;
+    const token = dados && dados.token;
 
     if (typeof codigo !== 'string') {
       responder({ sucesso: false, erro: 'Código inválido.' });
@@ -214,8 +271,9 @@ io.on('connection', (socket) => {
     }
 
     socket.join(codigoNormalizado);
-    sala.adicionarJogador(socket.id, apelido);
+    sala.adicionarJogador(socket.id, apelido, tokenValido(token) ? token : null);
     jogadorParaSala.set(socket.id, codigoNormalizado);
+    if (tokenValido(token)) tokenParaSala.set(token, codigoNormalizado);
 
     console.log(`[Sala] "${apelido}" entrou na sala ${codigoNormalizado}`);
     responder({ sucesso: true, codigo: codigoNormalizado });
@@ -381,6 +439,71 @@ io.on('connection', (socket) => {
   });
 
   /* -----------------------------------------------------------------------
+   * RECONEXAO E RANKING PERSISTENTE
+   * --------------------------------------------------------------------- */
+
+  /**
+   * Tenta retomar uma sessao de jogo apos queda de conexao ou reload
+   * da pagina. O cliente apresenta seu token de sessao; se houver uma
+   * sala com aquele token, o jogador eh remapeado para o novo socket.
+   */
+  registrar('reconectar-partida', (dados, callback) => {
+    const responder = callbackSeguro(callback);
+    const token = dados && dados.token;
+
+    if (!tokenValido(token)) {
+      return responder({ sucesso: false, erro: 'Sessão inválida.' });
+    }
+
+    const codigo = tokenParaSala.get(token);
+    const sala = codigo ? salas.get(codigo) : null;
+
+    if (!sala) {
+      tokenParaSala.delete(token);
+      return responder({ sucesso: false, erro: 'Nenhuma partida para retomar.' });
+    }
+
+    // Seguranca: se este socket ja estava em outra sala, sair dela primeiro
+    _sairDaSalaAtual(socket);
+
+    const resultado = sala.reconectarJogador(token, socket.id);
+    if (!resultado.sucesso) {
+      return responder({ sucesso: false, erro: resultado.erro });
+    }
+
+    // Derrubar o socket antigo "zumbi", se ainda constar como conectado
+    if (resultado.socketIdAntigo && resultado.socketIdAntigo !== socket.id) {
+      jogadorParaSala.delete(resultado.socketIdAntigo);
+      const socketAntigo = io.sockets.sockets.get(resultado.socketIdAntigo);
+      if (socketAntigo) {
+        socketAntigo.leave(codigo);
+        socketAntigo.disconnect(true);
+      }
+    }
+
+    socket.join(codigo);
+    jogadorParaSala.set(socket.id, codigo);
+
+    console.log(`[Sala] "${resultado.apelido}" reconectou na sala ${codigo}`);
+    responder({
+      sucesso: true,
+      codigo,
+      estado: resultado.estado,
+      apelido: resultado.apelido,
+    });
+
+    io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
+  });
+
+  /**
+   * Retorna o Hall da Fama (ranking persistente entre partidas).
+   */
+  registrar('obter-ranking', (callback) => {
+    const responder = callbackSeguro(callback);
+    responder(rankingPersistente.obterTop(10));
+  });
+
+  /* -----------------------------------------------------------------------
    * SALA: Sair e voltar ao lobby
    * --------------------------------------------------------------------- */
 
@@ -396,11 +519,13 @@ io.on('connection', (socket) => {
    * --------------------------------------------------------------------- */
 
   /**
-   * Limpa os dados do jogador ao desconectar (fechar aba, perder conexao).
+   * Trata a queda de conexao (fechar aba, perder rede). Durante uma
+   * partida o jogador entra em periodo de graca e pode reconectar;
+   * fora dela, eh removido como em uma saida voluntaria.
    */
   registrar('disconnect', () => {
     console.log(`[Conexao] Jogador desconectado: ${socket.id}`);
-    _sairDaSalaAtual(socket);
+    _sairDaSalaAtual(socket, { podeReconectar: true });
   });
 });
 
@@ -410,30 +535,42 @@ io.on('connection', (socket) => {
 
 /**
  * Remove o jogador da sala em que esta atualmente (se estiver em alguma).
- * Limpa a sala caso fique vazia.
+ * Em quedas de conexao durante a partida (podeReconectar), o jogador
+ * entra em periodo de graca em vez de ser removido. Limpa a sala caso
+ * fique sem humanos (contando os que ainda podem reconectar).
  * @param {import('socket.io').Socket} socket - Socket do jogador.
+ * @param {{podeReconectar?: boolean}} [opcoes] - Comportamento da saida.
  */
-function _sairDaSalaAtual(socket) {
+function _sairDaSalaAtual(socket, opcoes = {}) {
   const codigo = jogadorParaSala.get(socket.id);
   if (!codigo) return;
 
+  jogadorParaSala.delete(socket.id);
+
   const sala = salas.get(codigo);
-  if (sala) {
-    sala.removerJogador(socket.id);
+  if (!sala) return;
+
+  // Queda de conexao no meio da partida: reservar a vaga do jogador
+  if (opcoes.podeReconectar && sala.marcarDesconectado(socket.id)) {
     socket.leave(codigo);
-
-    // Notificar demais jogadores
-    io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
-
-    // Limpar sala quando nao houver mais jogadores humanos
-    if (sala.obterQuantidadeHumanos() === 0) {
-      sala.parar();
-      salas.delete(codigo);
-      console.log(`[Sala] Sala ${codigo} removida (vazia)`);
-    }
+    return;
   }
 
-  jogadorParaSala.delete(socket.id);
+  // Saida definitiva: liberar o token de sessao
+  const jogador = sala.jogadores.get(socket.id);
+  if (jogador && jogador.token) tokenParaSala.delete(jogador.token);
+
+  sala.removerJogador(socket.id);
+  socket.leave(codigo);
+
+  // Notificar demais jogadores
+  io.to(codigo).emit('sala-atualizada', sala.obterInfoSala());
+
+  // Limpar sala quando nao houver mais jogadores humanos
+  // (desconectados em graca contam como presentes ate expirar)
+  if (sala.obterQuantidadeHumanos() === 0) {
+    destruirSala(codigo);
+  }
 }
 
 /* =========================================================================

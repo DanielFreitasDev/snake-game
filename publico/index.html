@@ -90,9 +90,13 @@
   </div>
 
   <!-- ===================================================================
-       SCRIPT: Menu principal
-       Carrega e exibe recordes do localStorage e anima o fundo.
+       SCRIPTS: Menu principal
+       - anime.js (vendorizado): animacoes de entrada da interface
+       - FundoMenu3D (three.js, ES module): oceano de pontos 3D no fundo
+       - Script inline: recordes + fallback 2D se WebGL indisponivel
        =================================================================== -->
+  <script src="/js/vendor/anime.umd.min.js"></script>
+  <script type="module" src="/js/FundoMenu3D.js"></script>
   <script>
     /**
      * Carrega e exibe os recordes do modo solo armazenados em localStorage.
@@ -134,6 +138,7 @@
     function iniciarFundoAnimado() {
       const canvas = document.getElementById('canvas-fundo');
       const ctx = canvas.getContext('2d');
+      if (!ctx) return; // Canvas ja tomado por um contexto WebGL
       let particulas = [];
 
       /** Ajusta o canvas ao tamanho da janela */
@@ -193,10 +198,48 @@
       animar();
     }
 
+    /**
+     * Entrada animada do menu (anime.js): titulo desce, botoes e
+     * paineis surgem em cascata. Sem anime.js (ou com preferencia por
+     * menos movimento), o menu simplesmente aparece — sem quebrar.
+     */
+    function animarEntradaMenu() {
+      const reduzir = window.matchMedia &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduzir || typeof anime !== 'object' || !anime.animate) return;
+
+      anime.animate('.titulo-jogo', {
+        opacity: [0, 1],
+        y: [-26, 0],
+        duration: 700,
+        ease: 'outQuad',
+      });
+      anime.animate('.botao-menu', {
+        opacity: [0, 1],
+        x: [-30, 0],
+        duration: 550,
+        delay: anime.stagger(140, { start: 250 }),
+        ease: 'outQuad',
+      });
+      anime.animate(['.painel-recordes', '.painel-legenda', '.rodape-menu'], {
+        opacity: [0, 1],
+        y: [22, 0],
+        duration: 600,
+        delay: anime.stagger(130, { start: 550 }),
+        ease: 'outQuad',
+      });
+    }
+
     // Inicializar ao carregar a pagina
     document.addEventListener('DOMContentLoaded', () => {
       carregarRecordes();
-      iniciarFundoAnimado();
+
+      // Fundo 2D de particulas apenas se o fundo 3D (three.js) nao subiu
+      if (!window.__fundoMenu3D) {
+        iniciarFundoAnimado();
+      }
+
+      animarEntradaMenu();
     });
   </script>
 </body>

@@ -160,8 +160,12 @@ class JogoSolo {
     Mobile.entrarFullscreen();
     Mobile.bloquearGestos();
 
-    // Som de inicio
-    if (window.som) window.som.iniciarJogo();
+    // Som de inicio + musica ambiente
+    if (window.som) {
+      window.som.iniciarJogo();
+      window.som.definirIntensidadeMusica(0.2);
+      window.som.iniciarMusica('solo');
+    }
 
     if (this.intervaloJogo) clearInterval(this.intervaloJogo);
     const msPerTick = 1000 / CONSTANTES.SOLO.TICKS_POR_SEGUNDO;
@@ -198,6 +202,9 @@ class JogoSolo {
       this.intervaloJogo = null;
     }
 
+    // Silenciar a musica ambiente para o som de game over falar sozinho
+    if (window.som) window.som.pararMusica();
+
     // Mobile: liberar gestos ao fim do jogo
     Mobile.liberarGestos();
     Mobile.vibrarGameOver();
@@ -221,6 +228,12 @@ class JogoSolo {
     this.elNovoRecorde.style.display = novoRecorde ? 'block' : 'none';
     this._renderizarRecordesGameover();
     this.elTelaGameover.style.display = 'flex';
+
+    // Animacoes: pontuacao sobe ate o valor final; recorde pulsa
+    if (window.AnimacoesUI) {
+      AnimacoesUI.contarAte(this.elPontuacaoFinal, this.pontuacao);
+      if (novoRecorde) AnimacoesUI.pulso(this.elNovoRecorde);
+    }
 
     // Explosao dramatica de particulas
     if (this.cobra.length > 0) {
@@ -577,7 +590,11 @@ class JogoSolo {
         '#00ccff'
       );
     }
-    if (window.som) window.som.nivelSubiu();
+    if (window.som) {
+      window.som.nivelSubiu();
+      // Musica acompanha a tensao: mais rapida e densa a cada nivel
+      window.som.definirIntensidadeMusica(Math.min(1, 0.2 + (this.nivel - 1) * 0.11));
+    }
   }
 
   /**
